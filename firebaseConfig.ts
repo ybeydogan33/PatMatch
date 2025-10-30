@@ -4,7 +4,7 @@ import { initializeApp } from "firebase/app";
 // https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyCKB4iE60Gi6ftye-IW8-T1VyJ3YYakg1k",
   authDomain: "patmatchapp.firebaseapp.com",
   projectId: "patmatchapp",

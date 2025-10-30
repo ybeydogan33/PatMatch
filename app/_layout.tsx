@@ -1,40 +1,84 @@
-// app/_layout.tsx
+// app/_layout.tsx (DÜZELTİLMİŞ HALİ)
 
-import { PetsProvider } from '@/context/PetsContext'; // Oluşturduğumuz Provider
-import { Ionicons } from '@expo/vector-icons'; // Kapatma ikonu için
-import { Stack, useRouter } from 'expo-router'; // useRouter eklendi
-import React from 'react';
-import { TouchableOpacity } from 'react-native'; // Kapatma butonu için
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { PetsProvider } from '@/context/PetsContext';
+import { Ionicons } from '@expo/vector-icons';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import React, { useEffect } from 'react';
+import { TouchableOpacity } from 'react-native';
 
-// Bu, uygulamamızın ana giriş noktasıdır
-export default function RootLayout() {
-  const router = useRouter(); // Kapatma butonu için router'ı burada tanımlıyoruz
+// Bu bileşen, Context'lere erişmek için sarmalayıcıların *içinde* olmalı
+function RootLayoutNav() {
+  const { user } = useAuth(); // Auth durumunu al
+  const segments = useSegments(); // Hangi sayfada olduğumuzu bilmek için (örn: ['login'])
+  const router = useRouter(); // Yönlendirme yapmak için
 
+  useEffect(() => {
+    
+    // 1. DÜZELTME: Artık (auth) grubu değil, direkt sayfa isimlerini kontrol ediyoruz
+    const inAuthPages = segments.includes('login') || segments.includes('register');
+
+    // 2. DÜZELTME: YÖNLENDİRME MANTIĞI
+    
+    // Kullanıcı giriş yapmamışsa (user null ise) VE
+    // şu anda 'login' veya 'register' sayfalarında DEĞİLSE,
+    // onu 'login' ekranına at.
+    if (!user && !inAuthPages) {
+      router.replace('/login');
+    } 
+    // Kullanıcı giriş yapmışsa (user var ise) VE
+    // şu anda 'login' veya 'register' sayfasındaysa (veya ana dizindeyse)
+    // onu ana sayfaya '(tabs)' at.
+    else if (user && (inAuthPages || segments.length === 0)) {
+      router.replace('/(tabs)');
+    }
+  }, [user, segments]); // user veya segment değiştiğinde bu kontrolü yap
+
+  // STACK TANIMI (Aynı kaldı)
   return (
-    // 1. Tüm uygulamayı PetsProvider ile sarıyoruz
-    <PetsProvider>
-      {/* 2. Stack Navigator, (tabs) ve modal ekranlarını yönetir */}
-      <Stack>
-        {/* (tabs) ekran grubu (Ana Sayfa, Profil) */}
-        <Stack.Screen 
-          name="(tabs)" 
-          options={{ headerShown: false }} // (tabs)'ın kendi başlığı (header) var, bunu gizle
-        />
-        {/* Modal ekranımız */}
-        <Stack.Screen 
-          name="modal" 
-          options={{ 
-            presentation: 'modal',
-            // Modal'ın başlık ve kapatma butonunu buradan yönetiyoruz
-            headerTitle: 'Yeni Evcil Hayvan Ekle',
-            headerLeft: () => (
-              <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
-                <Ionicons name="close" size={28} color="#333" />
-              </TouchableOpacity>
-            ),
-          }}
-        />
-      </Stack>
-    </PetsProvider>
+    <Stack>
+      {/* (tabs) (Ana Uygulama) ekranları. */}
+      <Stack.Screen 
+        name="(tabs)" 
+        options={{ headerShown: false }} 
+      />
+      {/* İlan Detay Sayfası (Dinamik) */}
+      <Stack.Screen 
+        name="pet/[id]" 
+        options={{
+          headerTitle: "", 
+          headerBackTitle: "Geri",
+        }}
+      />
+      
+      {/* İlan Ekleme Modalı */}
+      <Stack.Screen 
+        name="modal" 
+        options={{ 
+          presentation: 'modal',
+          headerTitle: 'Yeni Evcil Hayvan Ekle',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      {/* Auth ekranları (Aynı kaldı) */}
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="register" options={{ headerShown: false }} />
+    </Stack>
+  );
+}
+
+// Bu, uygulamamızın ana giriş noktasıdır (Aynı kaldı)
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <PetsProvider>
+        <RootLayoutNav />
+      </PetsProvider>
+    </AuthProvider>
   );
 }
