@@ -1,33 +1,53 @@
+// app/(tabs)/_layout.tsx dosyasının yeni içeriği
+
+import { FontAwesome } from '@expo/vector-icons'; // İkonları kullanmak için
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+// Bu fonksiyon, alttaki sekme çubuğunu (Tab Bar) yönetir
+export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        // Aktif olan sekmenin rengini (turuncu) ayarlıyoruz
+        tabBarActiveTintColor: '#F97316', 
+        // Pasif olan sekmenin rengi
+        tabBarInactiveTintColor: '#888',
+        // Sekme çubuğunun arkaplan rengi
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+        },
+        // ÖNEMLİ: Ekranların üst kısmındaki varsayılan başlığı (header) gizliyoruz.
+        // Çünkü biz kendi başlığımızı (örn: "Hayatınıza Patili Bir Dost Katın")
+        // index.tsx içinde kendimiz ekledik.
+        headerShown: false, 
+      }}
+    >
+      {/* 1. Sekme: Ana Sayfa */}
       <Tabs.Screen
-        name="index"
+        // 'name' özelliği, dosya adıyla eşleşmeli (index.tsx)
+        name="index" 
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          // Sekmede görünecek isim
+          title: 'Ana Sayfa', 
+          // Sekme ikonu
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="home" size={size} color={color} />
+          ),
         }}
       />
+
+      {/* 2. Sekme: Profil */}
       <Tabs.Screen
-        name="explore"
+        // 'name' özelliği, dosya adıyla eşleşmeli (explore.tsx)
+        name="explore" 
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          // explore.tsx dosyasını 'Profil' ekranı olarak kullanacağız
+          title: 'Profil', 
+          // Sekme ikonu
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="user" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>

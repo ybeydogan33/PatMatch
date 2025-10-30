@@ -1,24 +1,40 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+// app/_layout.tsx
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { PetsProvider } from '@/context/PetsContext'; // Oluşturduğumuz Provider
+import { Ionicons } from '@expo/vector-icons'; // Kapatma ikonu için
+import { Stack, useRouter } from 'expo-router'; // useRouter eklendi
+import React from 'react';
+import { TouchableOpacity } from 'react-native'; // Kapatma butonu için
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
+// Bu, uygulamamızın ana giriş noktasıdır
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const router = useRouter(); // Kapatma butonu için router'ı burada tanımlıyoruz
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    // 1. Tüm uygulamayı PetsProvider ile sarıyoruz
+    <PetsProvider>
+      {/* 2. Stack Navigator, (tabs) ve modal ekranlarını yönetir */}
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        {/* (tabs) ekran grubu (Ana Sayfa, Profil) */}
+        <Stack.Screen 
+          name="(tabs)" 
+          options={{ headerShown: false }} // (tabs)'ın kendi başlığı (header) var, bunu gizle
+        />
+        {/* Modal ekranımız */}
+        <Stack.Screen 
+          name="modal" 
+          options={{ 
+            presentation: 'modal',
+            // Modal'ın başlık ve kapatma butonunu buradan yönetiyoruz
+            headerTitle: 'Yeni Evcil Hayvan Ekle',
+            headerLeft: () => (
+              <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+                <Ionicons name="close" size={28} color="#333" />
+              </TouchableOpacity>
+            ),
+          }}
+        />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    </PetsProvider>
   );
 }

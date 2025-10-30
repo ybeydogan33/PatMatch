@@ -1,112 +1,176 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+// app/(tabs)/explore.tsx (PROFİL SAYFASI - DİNAMİK HALİ)
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import type { Pet } from '@/components/PetCard'; // Tipleri alıyoruz
+import PetCard from '@/components/PetCard'; // Kart bileşenimizi tekrar kullanıyoruz
+import { PetsContext } from '@/context/PetsContext'; // 1. Global depomuzu import ettik
+import { Ionicons } from '@expo/vector-icons';
+import React, { useContext, useMemo } from 'react'; // useContext ve useMemo eklendi
+import {
+  FlatList,
+  Image,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
-export default function TabTwoScreen() {
+// 2. YENİLİK: Sahte MY_DUMMY_PETS verisini sildik.
+
+export default function ProfileScreen() {
+  
+  // 3. YENİLİK: Global 'pets' listesini depodan çekiyoruz
+  const { pets } = useContext(PetsContext);
+
+  // 4. YENİLİK: Giriş yapmış kullanıcıyı simüle ediyoruz
+  // (Bu bilgiyi modal.tsx'te 'contactName' olarak sabit kodlamıştık)
+  const currentUser = 'Yavuz';
+
+  // 5. YENİLİK: Sadece "Yavuz"a ait olan ilanları filtreliyoruz
+  const myPets = useMemo(() => {
+    // Sadece contactName'i 'Yavuz' olanları filtrele
+    return pets.filter(pet => pet.contactName === currentUser);
+  }, [pets, currentUser]); // 'pets' listesi değiştiğinde bu filtre yeniden çalışır
+
+  
+  // FlatList için render fonksiyonu
+  const renderMyPetCard = ({ item }: { item: Pet }) => (
+    <PetCard pet={item} />
+  );
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        // 6. YENİLİK: data'yı sahte veriden 'myPets' dizisine çevirdik
+        data={myPets} 
+        renderItem={renderMyPetCard}
+        keyExtractor={(item: Pet) => item.id}
+        style={styles.list}
+        showsVerticalScrollIndicator={false}
+        
+        // Listenin üst kısmı (Profil Bilgileri ve Butonlar)
+        ListHeaderComponent={
+          <>
+            {/* Profil Başlık Alanı */}
+            <View style={styles.profileHeader}>
+              <Image
+                style={styles.profileImage}
+                // Şimdilik yer tutucu bir görsel
+                source={{ uri: 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png' }} 
+              />
+              {/* Ekran görüntünüzden yola çıkarak "Yavuz" adını kullanıyoruz */}
+              <Text style={styles.profileName}>Yavuz</Text>
+              <Text style={styles.profileEmail}>yavuz@mail.com</Text>
+            </View>
+            
+            {/* Menü Butonları */}
+            <TouchableOpacity style={styles.menuButton}>
+              <Ionicons name="person-outline" size={20} color="#333" />
+              <Text style={styles.menuButtonText}>Profili Düzenle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuButton}>
+              <Ionicons name="settings-outline" size={20} color="#333" />
+              <Text style={styles.menuButtonText}>Ayarlar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.menuButton, styles.logoutButton]}>
+              <Ionicons name="log-out-outline" size={20} color="#D9534F" />
+              <Text style={[styles.menuButtonText, styles.logoutButtonText]}>Çıkış Yap</Text>
+            </TouchableOpacity>
+            
+            {/* İlanlarım Başlığı */}
+            <Text style={styles.listHeader}>İlanlarım ({myPets.length})</Text>
+          </>
+        }
+        
+        // 7. YENİLİK: Bu bileşen artık tam dinamik!
+        // 'myPets' dizisi boşsa (hiç ilanı yoksa) otomatik olarak gösterilecek
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Henüz hiç ilan eklememişsiniz.</Text>
+            <Text style={styles.emptySubText}>Ana sayfadan yeni ilan ekleyebilirsiniz.</Text>
+          </View>
+        }
+      />
+    </SafeAreaView>
   );
 }
 
+// Stiller
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFBF5',
   },
-  titleContainer: {
+  list: {
+    paddingHorizontal: 16,
+  },
+  // Profil Başlık Stilleri
+  profileHeader: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#e0e0e0',
+    marginBottom: 10,
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  profileEmail: {
+    fontSize: 16,
+    color: '#888',
+  },
+  // Menü Buton Stilleri
+  menuButton: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 10,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  menuButtonText: {
+    fontSize: 16,
+    marginLeft: 15,
+    color: '#333',
+  },
+  logoutButton: {
+    borderColor: '#D9534F',
+  },
+  logoutButtonText: {
+    color: '#D9534F',
+  },
+  // İlanlarım Başlığı
+  listHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15,
+    marginTop: 20,
+  },
+  // Boş Liste Stilleri
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    marginTop: 30,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  emptySubText: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 5,
   },
 });
