@@ -1,52 +1,62 @@
-// app/(tabs)/_layout.tsx dosyasının yeni içeriği
+// app/(tabs)/_layout.tsx (GÜNCELLENMİŞ HALİ - Sekme Bildirimi Eklendi)
 
-import { FontAwesome } from '@expo/vector-icons'; // İkonları kullanmak için
+import { useAuth } from '@/context/AuthContext'; // 1. YENİLİK: AuthContext'i import ettik
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-// Bu fonksiyon, alttaki sekme çubuğunu (Tab Bar) yönetir
 export default function TabsLayout() {
+  // 2. YENİLİK: Global okunmamış sayısını aldık
+  const { totalUnreadCount } = useAuth();
+
   return (
     <Tabs
       screenOptions={{
-        // Aktif olan sekmenin rengini (turuncu) ayarlıyoruz
-        tabBarActiveTintColor: '#F97316', 
-        // Pasif olan sekmenin rengi
+        tabBarActiveTintColor: '#F97316',
         tabBarInactiveTintColor: '#888',
-        // Sekme çubuğunun arkaplan rengi
         tabBarStyle: {
           backgroundColor: '#ffffff',
         },
-        // ÖNEMLİ: Ekranların üst kısmındaki varsayılan başlığı (header) gizliyoruz.
-        // Çünkü biz kendi başlığımızı (örn: "Hayatınıza Patili Bir Dost Katın")
-        // index.tsx içinde kendimiz ekledik.
         headerShown: false, 
       }}
     >
-      {/* 1. Sekme: Ana Sayfa */}
+      {/* 1. Sekme: Ana Sayfa (index.tsx) */}
       <Tabs.Screen
-        // 'name' özelliği, dosya adıyla eşleşmeli (index.tsx)
         name="index" 
         options={{
-          // Sekmede görünecek isim
           title: 'Ana Sayfa', 
-          // Sekme ikonu
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="home" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
 
-      {/* 2. Sekme: Profil */}
+      {/* 2. Sekme: Mesajlar (messages.tsx) */}
       <Tabs.Screen
-        // 'name' özelliği, dosya adıyla eşleşmeli (explore.tsx)
+        name="messages"
+        options={{
+          title: 'Mesajlar', 
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles-outline" size={size} color={color} />
+          ),
+          // 3. YENİLİK: Sekme bildirimi (badge)
+          tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined,
+          // 4. YENİLİK: Bildirim rengi
+          tabBarBadgeStyle: { 
+            backgroundColor: '#F97316', 
+            color: '#fff',
+            fontSize: 12,
+          }
+        }}
+      />
+
+      {/* 3. Sekme: Profil (explore.tsx) */}
+      <Tabs.Screen
         name="explore" 
         options={{
-          // explore.tsx dosyasını 'Profil' ekranı olarak kullanacağız
           title: 'Profil', 
-          // Sekme ikonu
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="user" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />

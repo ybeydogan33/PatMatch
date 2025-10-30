@@ -1,10 +1,14 @@
-// app/pet/[id].tsx (YENİ DOSYA - İLAN DETAY SAYFASI)
+// app/pet/[id].tsx (GÜNCELLENMİŞ HALİ - readStatus eklendi)
 
-import { PetsContext } from '@/context/PetsContext'; // Global depomuz
+import { useAuth } from '@/context/AuthContext';
+import { PetsContext } from '@/context/PetsContext';
+import { db } from '@/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import React, { useContext } from 'react';
 import {
+    Alert,
     Image,
     SafeAreaView,
     ScrollView,
@@ -15,44 +19,81 @@ import {
 } from 'react-native';
 
 export default function PetDetailScreen() {
-  const router = useRouter(); // Geri gitmek için (kullanmayabiliriz ama iyi)
-  
-  // 1. URL'den [id] parametresini alıyoruz
+  const router = useRouter(); 
   const { id } = useLocalSearchParams(); 
-  
-  // 2. Global pet listesini alıyoruz
   const { pets } = useContext(PetsContext);
+  const { user } = useAuth(); 
 
-  // 3. O 'id'ye sahip olan pet'i buluyoruz
   const pet = pets.find(p => p.id === id);
 
-  // 4. Eğer pet bulunamazsa (örn: eski link)
+  const handleStartChat = async () => {
+    if (!user || !pet) return;
+
+    if (user.uid === pet.userId) {
+      Alert.alert("Bu sizin ilanınız", "Kendi ilanınız için sohbet başlatamazsınız.");
+      return;
+    }
+
+    try {
+      const chatsRef = collection(db, 'chats');
+      
+      const q = query(chatsRef, where('users', 'array-contains', user.uid));
+      const querySnapshot = await getDocs(q);
+
+      let existingChat = null;
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.users.includes(pet.userId)) {
+          existingChat = { id: doc.id, ...data };
+        }
+      });
+
+      if (existingChat) {
+        router.push(`/chat/${existingChat.id}`);
+      } else {
+        // 1. YENİLİK: Yeni sohbet odası oluştururken readStatus ekliyoruz
+        const newChatRef = await addDoc(chatsRef, {
+          users: [user.uid, pet.userId], 
+          userNames: { 
+            [user.uid]: user.email?.split('@')[0],
+            [pet.userId]: pet.contactName.split('@')[0]
+          },
+          lastMessage: "Sohbet başlatıldı.",
+          lastTimestamp: serverTimestamp(),
+          // Her iki kullanıcı için de okunmamış mesaj sayacını 0'da başlat
+          readStatus: {
+            [user.uid]: 0,
+            [pet.userId]: 0
+          }
+        });
+        
+        router.push(`/chat/${newChatRef.id}`);
+      }
+    } catch (error) {
+      console.error("Sohbet başlatılırken hata:", error);
+      Alert.alert("Hata", "Sohbet odası oluşturulamadı.");
+    }
+  };
+
   if (!pet) {
+    // ... (Hata ekranı aynı) ...
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: "Hata" }} />
         <Text style={styles.name}>İlan Bulunamadı</Text>
-        <Text>Bu ilan yayından kaldırılmış veya yanlış bir linke tıklamış olabilirsiniz.</Text>
       </SafeAreaView>
     );
   }
   
-  // 5. Pet bulunduysa, sayfa başlığını onun adıyla güncelliyoruz
   return (
     <SafeAreaView style={styles.container}>
-      {/* Bu sayfanın başlığını dinamik olarak pet'in adıyla ayarla */}
+      {/* ... (Geri kalan JSX kodları aynı) ... */}
       <Stack.Screen options={{ title: pet.name, headerTitleAlign: 'center' }} />
-      
       <ScrollView>
-        {/* Büyük Resim */}
         <Image source={{ uri: pet.imageUrl }} style={styles.image} />
-        
         <View style={styles.contentContainer}>
-          {/* İsim ve Cins */}
           <Text style={styles.name}>{pet.name}</Text>
           <Text style={styles.breed}>{pet.breed} ({pet.animalType === 'kedi' ? 'Kedi' : 'Köpek'})</Text>
-          
-          {/* Hızlı Bilgiler (Yaş, Amaç) */}
           <View style={styles.infoRow}>
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>YAŞ</Text>
@@ -65,23 +106,21 @@ export default function PetDetailScreen() {
               </Text>
             </View>
           </View>
-          
-          {/* Tam Açıklama */}
           <Text style={styles.descriptionHeader}>Açıklama</Text>
           <Text style={styles.description}>{pet.description}</Text>
-          
-          {/* İletişime Geç Butonu */}
-          <TouchableOpacity style={styles.contactButton}>
-            <Ionicons name="chatbubble-ellipses-outline" size={24} color="#fff" />
-            <Text style={styles.contactButtonText}>{pet.contactName} ile İletişime Geç</Text>
-          </TouchableOpacity>
+          {user && user.uid !== pet.userId && (
+            <TouchableOpacity style={styles.contactButton} onPress={handleStartChat}>
+              <Ionicons name="chatbubble-ellipses-outline" size={24} color="#fff" />
+              <Text style={styles.contactButtonText}>{pet.contactName} ile İletişime Geç</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Stiller
+// ... (Stiller aynı) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -104,7 +143,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#666',
     marginBottom: 20,
-    textTransform: 'capitalize', // İlk harfi büyük yapar
+    textTransform: 'capitalize',
   },
   infoRow: {
     flexDirection: 'row',
@@ -140,11 +179,11 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 16,
     color: '#555',
-    lineHeight: 24, // Okunabilirlik için satır aralığı
+    lineHeight: 24,
     marginBottom: 30,
   },
   contactButton: {
-    backgroundColor: '#F97316', // Turuncu
+    backgroundColor: '#F97316',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

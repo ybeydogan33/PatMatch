@@ -1,11 +1,14 @@
-// app/(tabs)/explore.tsx (PROFİL SAYFASI - DİNAMİK HALİ)
+// app/(tabs)/explore.tsx (GÜNCELLENMİŞ HALİ - 'Profili Düzenle' butonu aktif)
 
-import type { Pet } from '@/components/PetCard'; // Tipleri alıyoruz
-import PetCard from '@/components/PetCard'; // Kart bileşenimizi tekrar kullanıyoruz
-import { PetsContext } from '@/context/PetsContext'; // 1. Global depomuzu import ettik
+import type { Pet } from '@/components/PetCard';
+import PetCard from '@/components/PetCard';
+import { useAuth } from '@/context/AuthContext';
+import { PetsContext } from '@/context/PetsContext';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useContext, useMemo } from 'react'; // useContext ve useMemo eklendi
+import { useRouter } from 'expo-router';
+import React, { useContext, useMemo } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   SafeAreaView,
@@ -15,75 +18,68 @@ import {
   View
 } from 'react-native';
 
-// 2. YENİLİK: Sahte MY_DUMMY_PETS verisini sildik.
-
 export default function ProfileScreen() {
-  
-  // 3. YENİLİK: Global 'pets' listesini depodan çekiyoruz
-  const { pets } = useContext(PetsContext);
+  const router = useRouter(); // Yönlendiriciyi tanımladık
+  const { pets, loading: petsLoading } = useContext(PetsContext);
+  const { user, userProfile, logout, loading: authLoading } = useAuth();
 
-  // 4. YENİLİK: Giriş yapmış kullanıcıyı simüle ediyoruz
-  // (Bu bilgiyi modal.tsx'te 'contactName' olarak sabit kodlamıştık)
-  const currentUser = 'Yavuz';
-
-  // 5. YENİLİK: Sadece "Yavuz"a ait olan ilanları filtreliyoruz
   const myPets = useMemo(() => {
-    // Sadece contactName'i 'Yavuz' olanları filtrele
-    return pets.filter(pet => pet.contactName === currentUser);
-  }, [pets, currentUser]); // 'pets' listesi değiştiğinde bu filtre yeniden çalışır
+    if (!user) return []; 
+    return pets.filter(pet => pet.userId === user.uid);
+  }, [pets, user]); 
 
   
-  // FlatList için render fonksiyonu
+  if (petsLoading || authLoading || !userProfile) {
+    return (
+      <SafeAreaView style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#F97316" />
+      </SafeAreaView>
+    );
+  }
+  
   const renderMyPetCard = ({ item }: { item: Pet }) => (
-    <PetCard pet={item} />
+    <PetCard pet={item} showAdminControls={true} />
   );
 
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        // 6. YENİLİK: data'yı sahte veriden 'myPets' dizisine çevirdik
-        data={myPets} 
+        data={myPets}
         renderItem={renderMyPetCard}
         keyExtractor={(item: Pet) => item.id}
         style={styles.list}
         showsVerticalScrollIndicator={false}
         
-        // Listenin üst kısmı (Profil Bilgileri ve Butonlar)
         ListHeaderComponent={
           <>
             {/* Profil Başlık Alanı */}
             <View style={styles.profileHeader}>
               <Image
                 style={styles.profileImage}
-                // Şimdilik yer tutucu bir görsel
-                source={{ uri: 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png' }} 
+                source={{ uri: userProfile.photoURL || 'https://via.placeholder.com/100' }} 
               />
-              {/* Ekran görüntünüzden yola çıkarak "Yavuz" adını kullanıyoruz */}
-              <Text style={styles.profileName}>Yavuz</Text>
-              <Text style={styles.profileEmail}>yavuz@mail.com</Text>
+              <Text style={styles.profileName}>{userProfile.displayName}</Text>
+              <Text style={styles.profileEmail}>{userProfile.email}</Text>
             </View>
             
-            {/* Menü Butonları */}
-            <TouchableOpacity style={styles.menuButton}>
+            {/* 1. YENİLİK: 'onPress' yönlendirme yapacak şekilde güncellendi */}
+            <TouchableOpacity 
+              style={styles.menuButton}
+              onPress={() => router.push('/profile/edit')} // Artık uyarı değil, yönlendirme yapıyor
+            >
               <Ionicons name="person-outline" size={20} color="#333" />
               <Text style={styles.menuButtonText}>Profili Düzenle</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuButton}>
-              <Ionicons name="settings-outline" size={20} color="#333" />
-              <Text style={styles.menuButtonText}>Ayarlar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuButton, styles.logoutButton]}>
+            
+            <TouchableOpacity style={[styles.menuButton, styles.logoutButton]} onPress={logout}>
               <Ionicons name="log-out-outline" size={20} color="#D9534F" />
               <Text style={[styles.menuButtonText, styles.logoutButtonText]}>Çıkış Yap</Text>
             </TouchableOpacity>
             
-            {/* İlanlarım Başlığı */}
             <Text style={styles.listHeader}>İlanlarım ({myPets.length})</Text>
           </>
         }
         
-        // 7. YENİLİK: Bu bileşen artık tam dinamik!
-        // 'myPets' dizisi boşsa (hiç ilanı yoksa) otomatik olarak gösterilecek
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>Henüz hiç ilan eklememişsiniz.</Text>
@@ -95,16 +91,19 @@ export default function ProfileScreen() {
   );
 }
 
-// Stiller
+// ... (Stiller aynı) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFBF5',
   },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   list: {
     paddingHorizontal: 16,
   },
-  // Profil Başlık Stilleri
   profileHeader: {
     alignItems: 'center',
     marginTop: 20,
@@ -121,12 +120,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#333',
+    textTransform: 'capitalize',
   },
   profileEmail: {
     fontSize: 16,
     color: '#888',
   },
-  // Menü Buton Stilleri
   menuButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -148,7 +147,6 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: '#D9534F',
   },
-  // İlanlarım Başlığı
   listHeader: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -156,10 +154,10 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     marginTop: 20,
   },
-  // Boş Liste Stilleri
   emptyContainer: {
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
     marginTop: 30,
   },
@@ -167,10 +165,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#666',
+    marginTop: 10,
   },
   emptySubText: {
     fontSize: 14,
     color: '#888',
     marginTop: 5,
+    textAlign: 'center',
   },
 });

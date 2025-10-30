@@ -1,30 +1,51 @@
-// app/register.tsx (YENİ DOSYA)
+// app/register.tsx (GÜNCELLENMİŞ HALİ - Kullanıcı Adı eklendi)
 
 import { useAuth } from '@/context/AuthContext';
+import { db } from '@/firebase';
 import { Link, useRouter } from 'expo-router';
+import { doc, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
 
 export default function RegisterScreen() {
+  // 1. YENİLİK: 'displayName' (Kullanıcı Adı) state'i eklendi
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { register } = useAuth(); // Bu sefer 'register' fonksiyonunu çek
-  const router = useRouter(); // Kayıt olduktan sonra login'e yönlendirmek için
+  const { register } = useAuth(); 
+  const router = useRouter(); 
 
   const handleRegister = async () => {
-    if (!email || !password) {
-      Alert.alert('Hata', 'Lütfen e-posta ve şifrenizi girin.');
+    // 2. YENİLİK: 'displayName' doğrulamaya eklendi
+    if (!email || !password || !displayName) {
+      Alert.alert('Hata', 'Lütfen tüm alanları doldurun.');
       return;
     }
     setLoading(true);
     try {
-      // Firebase register fonksiyonunu çağır
-      await register(email, password);
+      const userCredential = await register(email, password);
+      
+      if (userCredential && userCredential.user) {
+        const user = userCredential.user;
+        const userDocRef = doc(db, 'users', user.uid);
+        
+        // 3. YENİLİK: Firestore'a 'displayName' kaydediliyor
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: displayName, // E-posta yerine formdan gelen adı kaydet
+          // Varsayılan profil resmini de bu addan oluştur
+          photoURL: `https://ui-avatars.com/api/?name=${displayName.replace(' ', '+')}&background=random`
+        });
+      }
+
       Alert.alert('Kayıt Başarılı', 'Giriş ekranına yönlendiriliyorsunuz.');
-      router.replace('/login'); // Kayıt olunca login'e at
+      router.replace('/login');
+      
     } catch (error: any) {
+      // ... (hata yönetimi aynı) ...
       if (error.code === 'auth/email-already-in-use') {
         Alert.alert('Hata', 'Bu e-posta adresi zaten kullanılıyor.');
       } else if (error.code === 'auth/weak-password') {
@@ -41,6 +62,14 @@ export default function RegisterScreen() {
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Kayıt Ol</Text>
       
+      {/* 4. YENİLİK: Kullanıcı Adı TextInput'u eklendi */}
+      <TextInput
+        style={styles.input}
+        placeholder="Kullanıcı Adı"
+        value={displayName}
+        onChangeText={setDisplayName}
+        autoCapitalize="words"
+      />
       <TextInput
         style={styles.input}
         placeholder="E-posta"
@@ -74,7 +103,7 @@ export default function RegisterScreen() {
   );
 }
 
-// Stiller (Login ile aynı)
+// ... (Stiller aynı) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,

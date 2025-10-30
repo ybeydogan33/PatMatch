@@ -1,4 +1,4 @@
-// app/_layout.tsx (DÜZELTİLMİŞ HALİ)
+// app/_layout.tsx (GÜNCELLENMİŞ HALİ - 'profile/edit' eklendi)
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { PetsProvider } from '@/context/PetsContext';
@@ -7,51 +7,35 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
 import { TouchableOpacity } from 'react-native';
 
-// Bu bileşen, Context'lere erişmek için sarmalayıcıların *içinde* olmalı
 function RootLayoutNav() {
-  const { user } = useAuth(); // Auth durumunu al
-  const segments = useSegments(); // Hangi sayfada olduğumuzu bilmek için (örn: ['login'])
-  const router = useRouter(); // Yönlendirme yapmak için
+  const { user } = useAuth(); 
+  const segments = useSegments(); 
+  const router = useRouter(); 
 
   useEffect(() => {
-    
-    // 1. DÜZELTME: Artık (auth) grubu değil, direkt sayfa isimlerini kontrol ediyoruz
+    // Yönlendirme mantığı
     const inAuthPages = segments.includes('login') || segments.includes('register');
-
-    // 2. DÜZELTME: YÖNLENDİRME MANTIĞI
-    
-    // Kullanıcı giriş yapmamışsa (user null ise) VE
-    // şu anda 'login' veya 'register' sayfalarında DEĞİLSE,
-    // onu 'login' ekranına at.
     if (!user && !inAuthPages) {
       router.replace('/login');
     } 
-    // Kullanıcı giriş yapmışsa (user var ise) VE
-    // şu anda 'login' veya 'register' sayfasındaysa (veya ana dizindeyse)
-    // onu ana sayfaya '(tabs)' at.
     else if (user && (inAuthPages || segments.length === 0)) {
       router.replace('/(tabs)');
     }
-  }, [user, segments]); // user veya segment değiştiğinde bu kontrolü yap
+  }, [user, segments]); 
 
-  // STACK TANIMI (Aynı kaldı)
+  // STACK TANIMI
   return (
     <Stack>
-      {/* (tabs) (Ana Uygulama) ekranları. */}
-      <Stack.Screen 
-        name="(tabs)" 
-        options={{ headerShown: false }} 
-      />
-      {/* İlan Detay Sayfası (Dinamik) */}
+      {/* 1. Ana Uygulama (Sekmeler) */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      
+      {/* 2. İlan Detay */}
       <Stack.Screen 
         name="pet/[id]" 
-        options={{
-          headerTitle: "", 
-          headerBackTitle: "Geri",
-        }}
+        options={{ headerTitle: "", headerBackTitle: "Geri" }}
       />
       
-      {/* İlan Ekleme Modalı */}
+      {/* 3. İlan Ekleme Modalı */}
       <Stack.Screen 
         name="modal" 
         options={{ 
@@ -65,14 +49,49 @@ function RootLayoutNav() {
         }}
       />
 
-      {/* Auth ekranları (Aynı kaldı) */}
+      {/* 4. Sohbet Ekranı */}
+      <Stack.Screen 
+        name="chat/[chatId]" 
+        options={{ title: 'Sohbet', headerBackTitle: 'Mesajlar' }} 
+      />
+
+      {/* 5. İlan Düzenleme Ekranı */}
+      <Stack.Screen 
+        name="edit/[id]" 
+        options={{ 
+          presentation: 'modal',
+          headerTitle: 'İlanı Düzenle',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+          ),
+        }} 
+      />
+
+      {/* 6. YENİ EKRAN: Profili Düzenleme Ekranı
+          Bu da bir modal olarak açılacak */}
+      <Stack.Screen
+        name="profile/edit" // 'app/profile/edit.tsx' dosyasına karşılık gelir
+        options={{
+          presentation: 'modal',
+          headerTitle: 'Profili Düzenle',
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 10 }}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      {/* 7. Auth Ekranları (Login/Register) */}
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
     </Stack>
   );
 }
 
-// Bu, uygulamamızın ana giriş noktasıdır (Aynı kaldı)
+// Ana giriş noktası
 export default function RootLayout() {
   return (
     <AuthProvider>

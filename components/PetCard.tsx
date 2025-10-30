@@ -1,39 +1,70 @@
-// components/PetCard.tsx (TIKLANABİLİR HALİ)
+// components/PetCard.tsx (GÜNCELLENMİŞ HALİ - handleEdit eklendi)
 
-import type { Pet } from '@/components/PetCard'; // Bu satırı taşıdık
-import { Link } from 'expo-router'; // 1. YENİLİK: Expo Router'dan Link import edildi
-import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PetsContext } from '@/context/PetsContext';
+import { Ionicons } from '@expo/vector-icons';
+import { Link, useRouter } from 'expo-router'; // 1. YENİLİK: useRouter
+import React, { useContext } from 'react';
+import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // Pet arayüzü
 export interface Pet {
-  id: string;
+  id?: string;
+  userId: string;
   name: string;
   animalType: 'kedi' | 'kopek';
   breed: string;
   age: number;
   description: string;
-  contactName: string;
+  contactName: string; // Bu, ilan sahibinin e-postası
   type: 'sahiplenme' | 'ciftlestirme';
   imageUrl?: string;
+  createdAt?: any;
+  location?: string; // 1. YENİLİK: Konum alanı eklendi
 }
 
 export interface PetCardProps {
   pet: Pet;
+  showAdminControls?: boolean;
 }
 
-const PetCard: React.FC<PetCardProps> = ({ pet }) => {
+const PetCard: React.FC<PetCardProps> = ({ pet, showAdminControls = false }) => {
   const isSahiplenme = pet.type === 'sahiplenme';
+  const { deletePet } = useContext(PetsContext);
+  const router = useRouter(); // 2. YENİLİK: router'ı tanımla
+
+  // Silme fonksiyonu
+  const handleDelete = () => {
+    Alert.alert(
+      "İlanı Sil",
+      `'${pet.name}' adlı ilanı kalıcı olarak silmek istediğinizden emin misiniz?`,
+      [
+        { text: "İptal", style: "cancel" },
+        { 
+          text: "Sil", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              await deletePet(pet);
+            } catch (error) {
+              Alert.alert("Hata", "İlan silinirken bir sorun oluştu.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // 3. YENİLİK: Düzenleme fonksiyonu
+  const handleEdit = () => {
+    if (!pet.id) return;
+    router.push(`/edit/${pet.id}`); // Düzenleme sayfasına yönlendir
+  };
 
   return (
-    // 2. YENİLİK: Kartı 'Link' bileşeni ile sardık.
-    // 'href' prop'u, /pet/[id] formatına uygun dinamik bir yol oluşturur.
-    // 'asChild', Link'in stil için altındaki bileşeni (TouchableOpacity) kullanmasını sağlar.
+    // 'Link' kartın tamamını sarmaya devam ediyor
     <Link href={`/pet/${pet.id}`} asChild>
-      {/* 3. YENİLİK: Dış 'View' bileşenini 'TouchableOpacity' yaptık
-          (dokunma efektini daha iyi alması için) */}
       <TouchableOpacity style={styles.card}>
-        {/* Etiket (Sahiplenme veya Çiftleştirme) */}
+        {/* Badge ve Image kısımları */}
         <View style={[
           styles.badge, 
           isSahiplenme ? styles.badgeSahiplenme : styles.badgeCiftlestirme
@@ -42,8 +73,6 @@ const PetCard: React.FC<PetCardProps> = ({ pet }) => {
             {isSahiplenme ? 'Sahiplenme' : 'Çiftleştirme'}
           </Text>
         </View>
-        
-        {/* Görsel Alanı */}
         {pet.imageUrl ? (
           <Image source={{ uri: pet.imageUrl }} style={styles.cardImage} />
         ) : (
@@ -51,20 +80,40 @@ const PetCard: React.FC<PetCardProps> = ({ pet }) => {
         )}
         
         {/* İçerik Alanı */}
-        <Text style={styles.cardTitle}>{pet.name}</Text>
-        <Text style={styles.cardSubtitle}>{pet.breed}</Text>
-        {/* Açıklamayı 2 satırla sınırlayalım (Detay sayfasında tamamı görünecek) */}
-        <Text style={styles.cardDescription} numberOfLines={2}>
-          {pet.description}
-        </Text>
-        <Text style={styles.cardAge}>Yaş: {pet.age} yıl</Text>
-        
-        {/* İletişim Butonu (Bunu artık detay sayfasında yapacağız) */}
-        {/* <TouchableOpacity style={styles.cardButton}>
-          <Text style={styles.cardButtonText}>{pet.contactName} ile İletişime Geç</Text>
-        </TouchableOpacity> */}
-        {/* 4. YENİLİK: Kartın altındaki butonu kaldırdık,
-            çünkü artık kartın tamamı bir buton/link. */}
+        <View style={styles.contentContainer}>
+          <View style={styles.titleRow}>
+            <Text style={styles.cardTitle}>{pet.name}</Text>
+            {/* Admin Kontrolleri (Sil/Düzenle) */}
+            {showAdminControls && (
+              <View style={styles.adminControls}>
+                {/* 4. YENİLİK: 'handleEdit' fonksiyonunu 'onPress'e bağla */}
+                <TouchableOpacity 
+                  style={styles.adminButton} 
+                  onPress={(e) => {
+                    e.preventDefault(); // Ana Link'e (detay sayfasına) gitmeyi engelle
+                    handleEdit(); // Düzenleme fonksiyonunu çalıştır
+                  }}
+                >
+                  <Ionicons name="pencil" size={18} color="#007AFF" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.adminButton} 
+                  onPress={(e) => {
+                    e.preventDefault(); // Ana Link'e gitmeyi engelle
+                    handleDelete(); 
+                  }}
+                >
+                  <Ionicons name="trash" size={18} color="#FF3B30" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+          <Text style={styles.cardSubtitle}>{pet.breed}</Text>
+          <Text style={styles.cardDescription} numberOfLines={2}>
+            {pet.description}
+          </Text>
+          <Text style={styles.cardAge}>Yaş: {pet.age} yıl</Text>
+        </View>
       </TouchableOpacity>
     </Link>
   );
@@ -77,30 +126,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#ddd',
-    // padding: 12, // Padding'i kaldırdık, görsel kenarlara yayılsın
     marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    overflow: 'hidden', // Resmin yuvarlak köşelerden taşmasını engelle
+    overflow: 'hidden',
   },
   badge: {
     position: 'absolute',
-    top: 12, // Padding'i kaldırdığımız için ayarladık
+    top: 12,
     right: 12,
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 12,
     zIndex: 1,
   },
-  badgeSahiplenme: {
-    backgroundColor: 'rgba(46, 204, 113, 0.9)', // Yeşil
-  },
-  badgeCiftlestirme: {
-    backgroundColor: 'rgba(52, 152, 219, 0.9)', // Mavi
-  },
+  badgeSahiplenme: { backgroundColor: 'rgba(46, 204, 113, 0.9)' },
+  badgeCiftlestirme: { backgroundColor: 'rgba(52, 152, 219, 0.9)' },
   badgeText: {
     color: '#fff',
     fontWeight: 'bold',
@@ -108,42 +152,49 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     height: 180,
-    // borderRadius: 8, // Üst köşeleri yuvarlatmaya gerek kalmadı
-    marginBottom: 0,
     resizeMode: 'cover',
   },
   cardImagePlaceholder: {
     height: 180,
     backgroundColor: '#e0e0e0',
-    // borderRadius: 8,
-    marginBottom: 0,
   },
-  // 5. YENİLİK: İçerik için yeni bir 'contentContainer' stili
+  contentContainer: {
+    padding: 12,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   cardTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: '#222',
-    paddingHorizontal: 12, // İçeriğin padding'i
-    paddingTop: 10,
+    flex: 1,
+  },
+  adminControls: {
+    flexDirection: 'row',
+    marginLeft: 10,
+  },
+  adminButton: {
+    padding: 5,
+    marginLeft: 8,
   },
   cardSubtitle: {
     fontSize: 14,
     color: '#555',
     marginBottom: 8,
-    paddingHorizontal: 12,
   },
   cardDescription: {
     fontSize: 14,
     color: '#444',
     marginBottom: 10,
     lineHeight: 20,
-    paddingHorizontal: 12,
   },
   cardAge: {
     fontSize: 12,
     color: '#888',
-    marginBottom: 12,
-    paddingHorizontal: 12,
+    marginBottom: 4,
   },
 });
 

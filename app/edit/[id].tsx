@@ -1,11 +1,9 @@
-// app/modal.tsx (TEMİZLENMİŞ HALİ - Yapay Zeka kaldırıldı)
+// app/edit/[id].tsx (TEMİZLENMİŞ HALİ - Yapay Zeka kaldırıldı)
 
 import { useAuth } from '@/context/AuthContext';
 import { PetsContext } from '@/context/PetsContext';
-import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker'; // Eski (çirkin) Picker
-import { useRouter } from 'expo-router';
-import React, { useContext, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -24,10 +22,12 @@ const breedData = {
   kopek: ['Alman Kurdu', 'Golden Retriever', 'Terrier', 'Pug', 'Fransız Bulldog', 'Labrador', 'Diğer...']
 };
 
-export default function ModalScreen() {
+export default function EditPetScreen() {
   const router = useRouter();
-  const { addPet } = useContext(PetsContext); 
-  const { user } = useAuth(); 
+  const { user } = useAuth();
+  const { pets, updatePet } = useContext(PetsContext); 
+  const { id } = useLocalSearchParams();
+  const petToEdit = pets.find(p => p.id === id);
 
   // --- Form State'leri ---
   const [name, setName] = useState('');
@@ -35,77 +35,45 @@ export default function ModalScreen() {
   const [breed, setBreed] = useState('');
   const [age, setAge] = useState('');
   const [location, setLocation] = useState('');
-  const [purpose, setPurpose] = useState<'sahiplenme'>('sahiplenme');
+  const [purpose, setPurpose] =useState<'sahiplenme' | 'ciftlestirme'>('sahiplenme');
   const [description, setDescription] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUri, setImageUri] = useState<string | null>(null); 
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
+
+  // AI state'i KALDIRILDI
   
-  // AI ile ilgili state'ler ve fonksiyonlar KALDIRILDI
+  // ... (useEffect, pickImage, uploadImageAsync, handleSubmit fonksiyonları aynı,
+  // SADECE handleSubmit içinden AI mantığı kaldırıldı) ...
   
-  // ... (pickImage, uploadImageAsync, handleSubmit fonksiyonları aynı) ...
+  useEffect(() => {
+    if (petToEdit) {
+      setName(petToEdit.name || '');
+      setAnimalType(petToEdit.animalType || null);
+      setBreed(petToEdit.breed || '');
+      setAge(petToEdit.age ? petToEdit.age.toString() : '');
+      setPurpose(petToEdit.type || 'sahiplenme');
+      setDescription(petToEdit.description || '');
+      setImageUri(petToEdit.imageUrl || null);
+      setLocation(petToEdit.location || '');
+    }
+  }, [petToEdit]); 
+  
   const pickImage = async () => { /* ... (kod aynı) ... */ };
   const uploadImageAsync = async (uri: string, userId: string) => { /* ... (kod aynı) ... */ };
-  const handleSubmit = async () => { /* ... (kod aynı) ... */ };
+  const handleSubmit = async () => { /* ... (kod aynı, AI mantığı yok) ... */ };
+
+  
+  if (!petToEdit) {
+    return ( <SafeAreaView style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}> <ActivityIndicator size="large" color="#F97316" /> <Text>İlan bilgileri yükleniyor...</Text> </SafeAreaView> );
+  }
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
         {/* ... (Ad, Tür, Cins, Amaç, Yaş, Konum alanları aynı) ... */}
-
-        <Text style={styles.label}>Evcil Hayvanın Adı *</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} disabled={isLoading} />
-
-        <Text style={styles.label}>Hayvan Türü *</Text>
-        <View style={styles.selectorRow}>
-          <TouchableOpacity style={[styles.selectorButton, animalType === 'kedi' && styles.selectorActive]} onPress={() => { setAnimalType('kedi'); setBreed(breedData.kedi[0]); }} disabled={isLoading}>
-            <Text style={[styles.selectorText, animalType === 'kedi' && styles.selectorTextActive]}>Kedi</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.selectorButton, animalType === 'kopek' && styles.selectorActive]} onPress={() => { setAnimalType('kopek'); setBreed(breedData.kopek[0]); }} disabled={isLoading}>
-            <Text style={[styles.selectorText, animalType === 'kopek' && styles.selectorTextActive]}>Köpek</Text>
-          </TouchableOpacity>
-        </View>
         
-        {animalType && (
-          <>
-            <Text style={styles.label}>Cins *</Text>
-            <View style={styles.pickerContainer}> 
-              <Picker
-                selectedValue={breed}
-                onValueChange={(itemValue) => setBreed(itemValue)}
-                style={styles.picker}
-                enabled={!isLoading}
-              >
-                {breedData[animalType].map((b) => (
-                  <Picker.Item key={b} label={b} value={b} />
-                ))}
-              </Picker>
-            </View>
-          </>
-        )}
-
-        <Text style={styles.label}>Amaç *</Text>
-        <View style={styles.selectorRow}>
-          <TouchableOpacity style={[styles.selectorButton, purpose === 'sahiplenme' && styles.selectorActive]} onPress={() => setPurpose('sahiplenme')} disabled={isLoading}>
-            <Text style={[styles.selectorText, purpose === 'sahiplenme' && styles.selectorTextActive]}>Sahiplendirme</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.selectorButton, purpose === 'ciftlestirme' && styles.selectorActive]} onPress={() => setPurpose('ciftlestirme')} disabled={isLoading}>
-            <Text style={[styles.selectorText, purpose === 'ciftlestirme' && styles.selectorTextActive]}>Çiftleştirme</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.label}>Yaş (yıl) *</Text>
-        <TextInput style={styles.input} keyboardType="numeric" value={age} onChangeText={setAge} disabled={isLoading} />
-        <Text style={styles.label}>Konum *</Text>
-        <TextInput 
-          style={styles.input} 
-          value={location} 
-          onChangeText={setLocation} 
-          placeholder="örn: Kadıköy, İstanbul"
-          disabled={isLoading} 
-        />
-        
-        {/* Açıklama */}
         <Text style={styles.label}>Açıklama *</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
@@ -119,18 +87,17 @@ export default function ModalScreen() {
         
         {/* YAPAY ZEKA BUTONU BURADAN KALDIRILDI */}
 
-        {/* Fotoğraf */}
-        <Text style={styles.label}>Fotoğraf *</Text>
+        {/* Fotoğraf Alanı (Güncellenebilir) */}
+        <Text style={styles.label}>Fotoğraf (Değiştirmek için dokunun)</Text>
         <TouchableOpacity style={styles.imageUploadArea} onPress={pickImage} disabled={isLoading}>
-          {imageUri ? ( <Image source={{ uri: imageUri }} style={styles.imagePreview} /> ) : (
-            <>
-              <Ionicons name="cloud-upload-outline" size={30} color="#888" />
-              <Text style={styles.imageUploadText}>Fotoğraf Seçmek İçin Dokunun</Text>
-            </>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+          ) : (
+            <Text>Fotoğraf Yok</Text>
           )}
         </TouchableOpacity>
 
-        {/* Kaydet/İptal */}
+        {/* Kaydet / İptal Butonları */}
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()} disabled={isLoading}>
             <Text style={styles.cancelButtonText}>İptal</Text>
@@ -139,14 +106,13 @@ export default function ModalScreen() {
             {isLoading ? (
               <View style={styles.loadingRow}>
                 <ActivityIndicator size="small" color="#fff" />
-                <Text style={styles.loadingText}>{loadingMessage}</Text>
+                <Text style={styles.loadingText}>{loadingMessage || 'Kaydediliyor...'}</Text>
               </View>
             ) : (
-              <Text style={styles.submitButtonText}>Evcil Hayvan Ekle</Text>
+              <Text style={styles.submitButtonText}>Değişiklikleri Kaydet</Text>
             )}
           </TouchableOpacity>
         </View>
-
         <StatusBar barStyle="dark-content" />
       </ScrollView>
     </View>
@@ -159,14 +125,8 @@ const styles = StyleSheet.create({
   // Lütfen 'aiButton', 'aiButtonText' ve 'aiButtonDisabled' stillerini SİLİN.
   
   // ... (Geri kalan tüm stiller aynı) ...
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFBF5',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-  },
-  scrollContent: {
-    padding: 20,
-  },
+  container: { flex: 1, backgroundColor: '#FFFBF5', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
+  scrollContent: { padding: 20 },
   label: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8, marginTop: 15 },
   input: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, height: 48, fontSize: 16, color: '#333', marginBottom: 10 },
   textArea: { height: 100, paddingTop: 12, textAlignVertical: 'top', marginBottom: 15 },
@@ -178,8 +138,6 @@ const styles = StyleSheet.create({
   pickerContainer: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderRadius: 8, justifyContent: 'center', height: Platform.OS === 'ios' ? 120 : 50, marginBottom: 10, overflow: 'hidden' },
   picker: { height: Platform.OS === 'ios' ? 120 : 50, width: '100%' },
   imageUploadArea: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 30, marginBottom: 20, height: 200 },
-  imageUploadText: { fontSize: 15, color: '#555', marginTop: 8 },
-  imageUploadHint: { fontSize: 12, color: '#888', marginTop: 4 },
   imagePreview: { width: '100%', height: '100%', borderRadius: 8, resizeMode: 'cover' },
   buttonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
   cancelButton: { backgroundColor: '#e0e0e0', padding: 15, borderRadius: 8, alignItems: 'center', width: '48%' },

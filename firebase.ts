@@ -1,28 +1,22 @@
-// firebase.ts (YENİ DOSYA)
+// firebase.ts (GÜNCELLENMİŞ HALİ)
 
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-
-// Auth (Giriş) servislerini React Native'e özel kalıcı depolama ile kurmak için:
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeApp } from 'firebase/app';
 import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
-
-// 1. Adımda oluşturduğumuz konfigürasyon dosyamız
+import { getFirestore } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; // 1. YENİLİK
+import { deleteObject, getStorage, ref } from 'firebase/storage';
 import { firebaseConfig } from './firebaseConfig';
 
-// Firebase uygulamasını başlat
+// ... (app, db, auth, storage tanımlamaları aynı) ...
 const app = initializeApp(firebaseConfig);
-
-// Firestore (Veritabanı) servisini başlat
 export const db = getFirestore(app);
-
-// Auth (Kullanıcı Girişi) servisini başlat
-// Not: Burada 'getAuth' yerine 'initializeAuth' kullanıyoruz
-// ve 'persistence' (kalıcılık) olarak AsyncStorage'ı belirtiyoruz.
-// Bu, Expo Go'da giriş bilgilerinin saklanması için kritiktir.
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage)
 });
+export const storage = getStorage(app);
 
-// 'app'i de dışa aktarmak isterseniz (genelde gerekmez)
-// export { app, db, auth };
+// 2. YENİLİK: Functions servisini başlat ve dışa aktar
+export const functions = getFunctions(app); 
+// 3. YENİLİK: httpsCallable fonksiyonunu da kolay erişim için dışa aktar
+export { deleteObject, httpsCallable, ref };

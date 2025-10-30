@@ -1,68 +1,114 @@
-// context/PetsContext.tsx
+// context/PetsContext.tsx (GÜNCELLENMİŞ HALİ - updatePet eklendi)
 
-import type { Pet } from '@/components/PetCard'; // PetCard'dan aldığımız tip
-import React, { createContext, ReactNode, useState } from 'react';
+import type { Pet } from '@/components/PetCard';
+import { db, deleteObject, ref, storage } from '@/firebase';
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    onSnapshot,
+    orderBy,
+    query,
+    Timestamp,
+    updateDoc // 1. YENİLİK: updateDoc
+} from 'firebase/firestore';
+import React, { createContext, ReactNode, useEffect, useState } from 'react';
+import { useAuth } from './AuthContext';
 
-// Global depomuzda ne tutulacak
+// Context arayüzümüz
 interface IPetsContext {
   pets: Pet[];
-  addPet: (pet: Pet) => void;
+  addPet: (pet: Pet) => Promise<any>;
+  deletePet: (pet: Pet) => Promise<void>;
+  updatePet: (petId: string, updatedData: Partial<Pet>) => Promise<void>; // 2. YENİLİK
+  loading: boolean;
 }
 
-// Context'i oluşturuyoruz
 export const PetsContext = createContext<IPetsContext>({
   pets: [],
-  addPet: () => {},
+  addPet: async () => {},
+  deletePet: async () => {},
+  updatePet: async () => {}, // 3. YENİLİK
+  loading: true,
 });
 
-// Örnek veriyi index.tsx'ten buraya taşıdık ve {pet: ...} sarmalayıcısını kaldırdık
-const INITIAL_PETS: Pet[] = [
-  {
-    id: '1',
-    name: 'Fıstık',
-    breed: 'Tekir',
-    age: 2,
-    description: 'Fıstık, enerjik ve oyuncu bir Tekir. Yeni ailesini arıyor. Apartman hayatına uygun, sevecen bir dost.',
-    contactName: 'Ayşe Yılmaz',
-    type: 'sahiplenme',
-    imageUrl: 'https://images.pexels.com/photos/45201/kitty-cat-kitten-pet-45201.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-  },
-  {
-    id: '2',
-    name: 'Max',
-    breed: 'Alman Kurdu',
-    age: 4,
-    description: 'Max, eğitimli ve sadık bir Alman Kurdu. Aktif bir aile için harika bir koruyucu ve dost olacaktır.',
-    contactName: 'Ahmet Çelik',
-    type: 'sahiplenme',
-    imageUrl: 'https://images.pexels.com/photos/1108099/pexels-photo-1108099.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-  },
-  {
-    id: '3',
-    name: 'Paşa',
-    breed: 'Golden Retriever',
-    age: 3,
-    description: 'Paşa, safkan ve sağlıklı bir Golden Retriever. Soyunu devam ettirmek için uygun bir eş arıyor.',
-    contactName: 'Mehmet Kaya',
-    type: 'ciftlestirme',
-    imageUrl: 'https://images.pexels.com/photos/1458916/pexels-photo-1458916.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-  }
-];
-
-// Bu, uygulamamızı saracak olan 'Sağlayıcı' bileşendir
+// Provider bileşenimiz
 export const PetsProvider = ({ children }: { children: ReactNode }) => {
-  // Pet listesinin asıl state'i (durumu) burada tutulacak.
-  const [pets, setPets] = useState<Pet[]>(INITIAL_PETS);
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth(); 
 
-  // Yeni pet ekleme fonksiyonu
-  const addPet = (petToAdd: Pet) => {
-    // Yeni pet'i listenin başına ekleyip state'i güncelliyoruz
-    setPets(prevPets => [petToAdd, ...prevPets]);
+  // Veritabanını dinleyen useEffect (Aynı)
+  useEffect(() => {
+    if (!user) {
+      setPets([]);
+      setLoading(false);
+      return;
+    }
+    
+    setLoading(true);
+    const petCollectionRef = collection(db, 'pets');
+    const q = query(petCollectionRef, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const petsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Pet[];
+      
+      setPets(petsData);
+      setLoading(false);
+    }, (error) => {
+      console.error("İlanları çekerken hata: ", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 'addPet' fonksiyonu (Aynı)
+  const addPet = async (petToAdd: Pet) => {
+    const petCollectionRef = collection(db, 'pets');
+    return addDoc(petCollectionRef, {
+      ...petToAdd,
+      createdAt: Timestamp.now()
+    });
+  };
+  
+  // 'deletePet' fonksiyonu (Aynı)
+  const deletePet = async (petToDelete: Pet) => {
+    // ... (silme mantığı aynı) ...
+    if (!petToDelete.id) return;
+    try {
+      const petDocRef = doc(db, 'pets', petToDelete.id);
+      await deleteDoc(petDocRef);
+      if (petToDelete.imageUrl && petToDelete.imageUrl.includes('firebasestorage')) {
+        const imageRef = ref(storage, petToDelete.imageUrl);
+        await deleteObject(imageRef);
+      }
+    } catch (error) {
+      console.error("İlan silinirken hata:", error);
+      throw new Error("İlan silinemedi.");
+    }
   };
 
-  // Depomuzu (pets listesi ve addPet fonksiyonu) alt bileşenlere sunuyoruz
+  // 4. YENİLİK: 'updatePet' fonksiyonu
+  const updatePet = async (petId: string, updatedData: Partial<Pet>) => {
+    try {
+      const petDocRef = doc(db, 'pets', petId);
+      // Not: Şimdilik sadece metin güncellemeyi yapıyoruz.
+      // Fotoğraf güncelleme daha karmaşıktır (Adım 5'te yapılabilir).
+      await updateDoc(petDocRef, updatedData);
+    } catch (error) {
+      console.error("İlan güncellenirken hata:", error);
+      throw new Error("İlan güncellenemedi.");
+    }
+  };
+
+
   return (
-    <PetsContext.Provider value={{ pets, addPet }}>
+    <PetsContext.Provider value={{ pets, addPet, deletePet, updatePet, loading }}>
       {children}
     </PetsContext.Provider>
   );
