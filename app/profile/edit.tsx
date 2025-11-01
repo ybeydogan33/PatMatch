@@ -1,39 +1,38 @@
-// app/profile/edit.tsx (YENİ DOSYA - Profili Düzenle Formu)
+// app/profile/edit.tsx (TAM VE DÜZELTİLMİŞ SUPABASE SÜRÜMÜ)
 
 import { useAuth } from '@/context/AuthContext';
-import { db, storage } from '@/firebase'; // Storage ve db'yi al
+import { supabase } from '@/supabase';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker'; // Fotoğraf seçici
+import { decode } from 'base-64';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { doc, updateDoc } from 'firebase/firestore'; // Döküman güncelleme
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage'; // Storage fonksiyonları
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { user, userProfile } = useAuth(); // Mevcut kullanıcı ve profil bilgilerini al
+  const { user, profile } = useAuth(); 
 
-  // Form state'lerini mevcut profil bilgileriyle doldur
-  const [displayName, setDisplayName] = useState(userProfile?.displayName || '');
-  const [imageUri, setImageUri] = useState<string | null>(userProfile?.photoURL || null);
+  const [displayName, setDisplayName] = useState(profile?.display_name || '');
+  const [imageUri, setImageUri] = useState<string | null>(profile?.photo_url || null);
   
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
 
-  // Fotoğraf seçme fonksiyonu (modal.tsx'ten kopyalandı)
+  // Fotoğraf seçme (TAM HALİ)
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -43,34 +42,59 @@ export default function EditProfileScreen() {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1], // Profil fotoğrafı için 1:1 (kare) oran
+      aspect: [1, 1], // Kare
       quality: 0.7,
     });
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri); // State'i yeni (lokal) URI ile güncelle
+      setImageUri(result.assets[0].uri); 
     }
   };
 
-  // Yeni fotoğrafı yükleme (modal.tsx'ten kopyalandı ve dosya yolu değiştirildi)
-  const uploadImageAsync = async (uri: string, userId: string) => {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    // Dosya yolu: images/avatars/kullaniciID.jpg
-    const fileName = `images/avatars/${userId}.jpg`; 
-    const fileRef = ref(storage, fileName);
-    const snapshot = await uploadBytes(fileRef, blob);
-    return await getDownloadURL(snapshot.ref);
+  // Fotoğrafı Supabase Storage'a 'expo-file-system' (ArrayBuffer) ile yükleme
+  const uploadImageAsync = async (uri: string, userId: string): Promise<string> => {
+    try {
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const filePath = `public/${userId}.${fileExt}`; // Avatars kovası için dosya yolu
+
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: "base64",
+      });
+
+      const raw = decode(base64);
+      const rawLength = raw.length;
+      const array = new Uint8Array(new ArrayBuffer(rawLength));
+      for (let i = 0; i < rawLength; i++) {
+        array[i] = raw.charCodeAt(i);
+      }
+      
+      const { data, error } = await supabase.storage
+        .from('avatars') // Kova adı: 'avatars'
+        .upload(filePath, array, { 
+          contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+          upsert: true, // Profil fotoğrafının üzerine yaz
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+        
+      return publicUrl;
+      
+    } catch (error) {
+      console.error("Supabase yükleme hatası:", error);
+      throw error;
+    }
   };
 
-
-  // Değişiklikleri Kaydetme
+  // Değişiklikleri Kaydetme (TAM HALİ)
   const handleSave = async () => {
-    if (!user || !userProfile) {
+    if (!user || !profile) {
       Alert.alert("Hata", "Kullanıcı bulunamadı.");
       return;
     }
     
-    // Görünen ad boş olamaz
     if (displayName.trim() === '') {
       Alert.alert("Hata", "Görünen ad boş bırakılamaz.");
       return;
@@ -79,42 +103,35 @@ export default function EditProfileScreen() {
     setLoadingMessage("Profil Güncelleniyor...");
 
     try {
-      // Güncellenecek veriyi tutan obje
-      const updates: { displayName: string; photoURL?: string } = {
-        displayName: displayName.trim(),
-      };
-      
-      // 1. Fotoğraf değişti mi kontrol et
-      if (imageUri && imageUri !== userProfile.photoURL) {
+      let newPhotoURL = profile.photo_url; // Varsayılan olarak eski URL
+
+      if (imageUri && imageUri !== profile.photo_url) {
         setLoadingMessage("Yeni Fotoğraf Yükleniyor...");
-        
-        // 1A. Yeni fotoğrafı Storage'a yükle
-        const newPermanentUrl = await uploadImageAsync(imageUri, user.uid);
-        updates.photoURL = newPermanentUrl; // Kalıcı URL'i güncelleme objesine ekle
-        
-        // 1B. Eski fotoğrafı Storage'dan sil (eğer varsayılan 'ui-avatars' değilse)
-        if (userProfile.photoURL && userProfile.photoURL.includes('firebasestorage')) {
-          const oldImageRef = ref(storage, userProfile.photoURL);
-          try {
-            await deleteObject(oldImageRef);
-          } catch (deleteError) {
-            console.warn("Eski profil fotoğrafı silinirken hata:", deleteError);
-          }
-        }
+        newPhotoURL = await uploadImageAsync(imageUri, user.id);
+        // (Not: Supabase 'upsert: true' kullandığı için eski fotoğrafı silmemize gerek yok, üzerine yazar)
       }
       
-      // 2. Firestore'daki 'users' belgesini güncelle
       setLoadingMessage("Veritabanı Kaydediliyor...");
-      const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, updates);
+      
+      const updates = {
+        display_name: displayName.trim(),
+        photo_url: newPhotoURL,
+      };
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id); 
+        
+      if (error) throw error;
       
       setLoadingMessage(null);
       Alert.alert("Başarılı", "Profiliniz güncellendi.");
-      router.back(); // Modalı kapat
+      router.back(); 
 
-    } catch (error) {
+    } catch (error: any) {
       setLoadingMessage(null);
-      console.error("Profil güncellenirken hata:", error);
+      console.error("Profil güncellenirken hata:", error.message);
       Alert.alert("Hata", "Profil güncellenirken bir sorun oluştu.");
     }
   };
@@ -124,7 +141,6 @@ export default function EditProfileScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
-        {/* Fotoğraf Değiştirme Alanı */}
         <TouchableOpacity style={styles.avatarContainer} onPress={pickImage} disabled={isLoading}>
           {imageUri ? (
             <Image source={{ uri: imageUri }} style={styles.avatarImage} />
@@ -139,7 +155,6 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
         <Text style={styles.avatarHelperText}>Fotoğrafı değiştirmek için dokunun</Text>
 
-        {/* Görünen Ad Alanı */}
         <Text style={styles.label}>Görünen Ad *</Text>
         <TextInput
           style={styles.input}
@@ -149,15 +164,13 @@ export default function EditProfileScreen() {
           disabled={isLoading}
         />
 
-        {/* E-posta Alanı (Değiştirilemez) */}
         <Text style={styles.label}>E-posta (Değiştirilemez)</Text>
         <TextInput
           style={[styles.input, styles.inputDisabled]}
           value={user?.email || ''}
-          editable={false} // Düzenlemeyi engelle
+          editable={false} 
         />
 
-        {/* Kaydet Butonu */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
             style={[styles.saveButton, isLoading && styles.saveButtonDisabled]} 
@@ -181,7 +194,7 @@ export default function EditProfileScreen() {
   );
 }
 
-// Stiller
+// Stiller (TAM HALİ)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -190,9 +203,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    alignItems: 'center', // İçeriği ortala
+    alignItems: 'center', 
   },
-  // Avatar Stilleri
   avatarContainer: {
     width: 120,
     height: 120,
@@ -209,9 +221,7 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 60,
   },
-  avatarPlaceholder: {
-    // (Arka plan zaten container'da)
-  },
+  avatarPlaceholder: {},
   cameraIcon: {
     position: 'absolute',
     bottom: 0,
@@ -227,13 +237,12 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 30,
   },
-  // Form Stilleri
   label: {
     fontSize: 15,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
-    alignSelf: 'flex-start', // Etiketi sola hizala
+    alignSelf: 'flex-start',
     width: '100%',
   },
   input: {
@@ -252,7 +261,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     color: '#888',
   },
-  // Kaydet Butonu Stilleri
   buttonContainer: {
     width: '100%',
     marginTop: 20,

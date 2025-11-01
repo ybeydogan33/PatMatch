@@ -1,6 +1,6 @@
-// app/login.tsx (YENİ DOSYA)
+// app/login.tsx (SUPABASE SÜRÜMÜ)
 
-import { useAuth } from '@/context/AuthContext'; // Az önce oluşturduğumuz context
+import { useAuth } from '@/context/AuthContext';
 import { Link } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
@@ -10,8 +10,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   
-  // AuthContext'ten 'login' fonksiyonunu çek
-  const { login } = useAuth();
+  const { login } = useAuth(); // AuthContext'ten Supabase 'login' fonksiyonu
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -20,12 +19,15 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      // Firebase login fonksiyonunu çağır
-      await login(email, password);
+      // Supabase login fonksiyonunu çağır
+      const { data, error } = await login(email, password);
+      
+      if (error) throw error; // Hata varsa catch bloğuna at
+
       // Başarılı girişten sonra _layout.tsx bizi otomatik yönlendirecek
     } catch (error: any) {
-      // Firebase hata kodlarına göre kullanıcı dostu mesajlar
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      // Supabase hata mesajları
+      if (error.message.includes("Invalid login credentials")) {
         Alert.alert('Giriş Başarısız', 'E-posta veya şifre hatalı.');
       } else {
         Alert.alert('Hata', 'Giriş yapılırken bir hata oluştu: ' + error.message);
@@ -36,6 +38,7 @@ export default function LoginScreen() {
   };
 
   return (
+    // ... (JSX ARAYÜZÜ AYNI) ...
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Giriş Yap</Text>
       
@@ -52,7 +55,7 @@ export default function LoginScreen() {
         placeholder="Şifre"
         value={password}
         onChangeText={setPassword}
-        secureTextEntry // Şifreyi gizler
+        secureTextEntry
       />
 
       {loading ? (
@@ -72,51 +75,13 @@ export default function LoginScreen() {
   );
 }
 
-// Stiller (Diğer dosyalardan kopyaladık)
+// ... (Stiller aynı) ...
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFBF5',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderColor: '#ddd',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    height: 50,
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 15,
-  },
-  button: {
-    backgroundColor: '#F97316',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginVertical: 10,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  linkButton: {
-    marginTop: 20,
-  },
-  linkText: {
-    color: '#F97316',
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: '#FFFBF5', justifyContent: 'center', padding: 20 },
+  title: { fontSize: 32, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 40 },
+  input: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, height: 50, fontSize: 16, color: '#333', marginBottom: 15 },
+  button: { backgroundColor: '#F97316', padding: 15, borderRadius: 8, alignItems: 'center', marginVertical: 10 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
+  linkButton: { marginTop: 20 },
+  linkText: { color: '#F97316', textAlign: 'center', fontSize: 16, fontWeight: 'bold' },
 });

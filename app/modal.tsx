@@ -1,13 +1,16 @@
-// app/modal.tsx (TEMİZLENMİŞ HALİ - Yapay Zeka kaldırıldı)
+// app/modal.tsx (TAM VE DÜZELTİLMİŞ SUPABASE SÜRÜMÜ)
 
 import { useAuth } from '@/context/AuthContext';
 import { PetsContext } from '@/context/PetsContext';
+import { supabase } from '@/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker'; // Eski (çirkin) Picker
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useContext, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -18,6 +21,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+
+// 1. DOĞRU İMPORTLAR:
+import { decode } from 'base-64'; // base-64 paketinden 'decode'
+import * as FileSystem from 'expo-file-system/legacy';
 
 const breedData = {
   kedi: ['Tekir', 'Siyam', 'Sarman', 'British Shorthair', 'Scottish Fold', 'Van Kedisi', 'Diğer...'],
@@ -41,19 +48,112 @@ export default function ModalScreen() {
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
   
-  // AI ile ilgili state'ler ve fonksiyonlar KALDIRILDI
+  // Fotoğraf seçme (TAM HALİ)
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Üzgünüz, fotoğraf yüklemek için galeri iznine ihtiyacımız var.');
+      return;
+    }
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, 
+      aspect: [4, 3], 
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
   
-  // ... (pickImage, uploadImageAsync, handleSubmit fonksiyonları aynı) ...
-  const pickImage = async () => { /* ... (kod aynı) ... */ };
-  const uploadImageAsync = async (uri: string, userId: string) => { /* ... (kod aynı) ... */ };
-  const handleSubmit = async () => { /* ... (kod aynı) ... */ };
+  // 2. DÜZELTME: Fotoğrafı Supabase Storage'a 'expo-file-system' (ArrayBuffer) ile yükleme
+  const uploadImageAsync = async (uri: string, userId: string): Promise<string> => {
+    try {
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+      const filePath = `public/${fileName}`; 
+
+      // 1. Dosyayı base64 olarak oku
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: "base64", // 'EncodingType.Base64' yerine
+      });
+
+      // 2. base64'ü Supabase'in beklediği ArrayBuffer'a çevir
+      const raw = decode(base64);
+      const rawLength = raw.length;
+      const array = new Uint8Array(new ArrayBuffer(rawLength));
+      for (let i = 0; i < rawLength; i++) {
+        array[i] = raw.charCodeAt(i);
+      }
+      
+      // 3. Supabase Storage'a yükle ('pet-images' kovasına)
+      const { data, error } = await supabase.storage
+        .from('pet-images')
+        .upload(filePath, array, { // 'array' (ArrayBuffer)
+          contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      // 4. Yüklenen dosyanın kalıcı URL'ini al
+      const { data: { publicUrl } } = supabase.storage
+        .from('pet-images')
+        .getPublicUrl(filePath);
+        
+      return publicUrl;
+      
+    } catch (error) {
+      console.error("Supabase yükleme hatası:", error);
+      throw error;
+    }
+  };
+
+  // Formu gönderme (TAM HALİ)
+  const handleSubmit = async () => { 
+    if (!user) {
+      Alert.alert('Hata', 'İlan eklemek için giriş yapmış olmalısınız.');
+      return;
+    }
+    
+    if (!name || !animalType || !breed || !age || !description || !imageUri || !location) {
+      Alert.alert('Hata', 'Lütfen konum dahil tüm * ile işaretli zorunlu alanları doldurun.');
+      return;
+    }
+    
+    try {
+      setLoadingMessage("Fotoğraf Yükleniyor...");
+      const permanentImageUrl = await uploadImageAsync(imageUri, user.id);
+
+      setLoadingMessage("İlan Kaydediliyor...");
+
+      const newPet = { 
+        name: name,
+        animal_type: animalType,
+        breed: breed,
+        age: parseInt(age) || 0,
+        description: description,
+        type: purpose,
+        image_url: permanentImageUrl,
+        location: location,
+      };
+
+      await addPet(newPet as any); 
+      setLoadingMessage(null); 
+      router.back(); 
+
+    } catch (error: any) {
+      setLoadingMessage(null); 
+      console.error("İlan eklenirken hata:", error.message);
+      Alert.alert('Hata', 'İlan eklenirken bir sorun oluştu: ' + error.message);
+    }
+  };
+  
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
-        {/* ... (Ad, Tür, Cins, Amaç, Yaş, Konum alanları aynı) ... */}
-
         <Text style={styles.label}>Evcil Hayvanın Adı *</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} disabled={isLoading} />
 
@@ -96,6 +196,7 @@ export default function ModalScreen() {
         </View>
         <Text style={styles.label}>Yaş (yıl) *</Text>
         <TextInput style={styles.input} keyboardType="numeric" value={age} onChangeText={setAge} disabled={isLoading} />
+        
         <Text style={styles.label}>Konum *</Text>
         <TextInput 
           style={styles.input} 
@@ -105,21 +206,9 @@ export default function ModalScreen() {
           disabled={isLoading} 
         />
         
-        {/* Açıklama */}
         <Text style={styles.label}>Açıklama *</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          multiline 
-          numberOfLines={4}
-          placeholder="Evcil hayvanınızı tanımlayın..." // Placeholder güncellendi
-          value={description}
-          onChangeText={setDescription} 
-          disabled={isLoading}
-        />
+        <TextInput style={[styles.input, styles.textArea]} multiline numberOfLines={4} placeholder="Evcil hayvanınızı tanımlayın..." value={description} onChangeText={setDescription} disabled={isLoading} />
         
-        {/* YAPAY ZEKA BUTONU BURADAN KALDIRILDI */}
-
-        {/* Fotoğraf */}
         <Text style={styles.label}>Fotoğraf *</Text>
         <TouchableOpacity style={styles.imageUploadArea} onPress={pickImage} disabled={isLoading}>
           {imageUri ? ( <Image source={{ uri: imageUri }} style={styles.imagePreview} /> ) : (
@@ -130,7 +219,6 @@ export default function ModalScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Kaydet/İptal */}
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()} disabled={isLoading}>
             <Text style={styles.cancelButtonText}>İptal</Text>
@@ -155,18 +243,8 @@ export default function ModalScreen() {
 
 // Stiller
 const styles = StyleSheet.create({
-  // ... (Tüm stillerinizi koruyun) ...
-  // Lütfen 'aiButton', 'aiButtonText' ve 'aiButtonDisabled' stillerini SİLİN.
-  
-  // ... (Geri kalan tüm stiller aynı) ...
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFBF5',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-  },
-  scrollContent: {
-    padding: 20,
-  },
+  container: { flex: 1, backgroundColor: '#FFFBF5', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
+  scrollContent: { padding: 20 },
   label: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8, marginTop: 15 },
   input: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, height: 48, fontSize: 16, color: '#333', marginBottom: 10 },
   textArea: { height: 100, paddingTop: 12, textAlignVertical: 'top', marginBottom: 15 },

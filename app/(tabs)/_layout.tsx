@@ -1,4 +1,4 @@
-// app/(tabs)/_layout.tsx (GÜNCELLENMİŞ HALİ - Sekme Bildirimi Eklendi)
+// app/(tabs)/_layout.tsx (SON HALİ - Sekme Bildirimi Eklendi)
 
 import { useAuth } from '@/context/AuthContext'; // 1. YENİLİK: AuthContext'i import ettik
 import { Ionicons } from '@expo/vector-icons';
@@ -41,7 +41,6 @@ export default function TabsLayout() {
           ),
           // 3. YENİLİK: Sekme bildirimi (badge)
           tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined,
-          // 4. YENİLİK: Bildirim rengi
           tabBarBadgeStyle: { 
             backgroundColor: '#F97316', 
             color: '#fff',

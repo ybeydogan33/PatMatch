@@ -1,11 +1,16 @@
-// app/edit/[id].tsx (TEMİZLENMİŞ HALİ - Yapay Zeka kaldırıldı)
+// app/edit/[id].tsx (TAM VE DÜZELTİLMİŞ HALİ - FormData ile Yükleme)
 
+import type { Pet } from '@/components/PetCard';
 import { useAuth } from '@/context/AuthContext';
 import { PetsContext } from '@/context/PetsContext';
+import { supabase } from '@/supabase';
+import { Picker } from '@react-native-picker/picker'; // Eski (çirkin) Picker
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -16,6 +21,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+// 1. YENİLİK: 'expo-file-system' ve 'base-64' importlarını SİLDİK.
 
 const breedData = {
   kedi: ['Tekir', 'Siyam', 'Sarman', 'British Shorthair', 'Scottish Fold', 'Van Kedisi', 'Diğer...'],
@@ -27,7 +33,7 @@ export default function EditPetScreen() {
   const { user } = useAuth();
   const { pets, updatePet } = useContext(PetsContext); 
   const { id } = useLocalSearchParams();
-  const petToEdit = pets.find(p => p.id === id);
+  const petToEdit = pets.find(p => p.id === Number(id));
 
   // --- Form State'leri ---
   const [name, setName] = useState('');
@@ -35,59 +41,194 @@ export default function EditPetScreen() {
   const [breed, setBreed] = useState('');
   const [age, setAge] = useState('');
   const [location, setLocation] = useState('');
-  const [purpose, setPurpose] =useState<'sahiplenme' | 'ciftlestirme'>('sahiplenme');
+  const [purpose, setPurpose] = useState<'sahiplenme' | 'ciftlestirme'>('sahiplenme');
   const [description, setDescription] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null); 
+  const [imageUri, setImageUri] = useState<string | null>(null); // Bu, yeni seçilen veya mevcut olan URI
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
 
-  // AI state'i KALDIRILDI
-  
-  // ... (useEffect, pickImage, uploadImageAsync, handleSubmit fonksiyonları aynı,
-  // SADECE handleSubmit içinden AI mantığı kaldırıldı) ...
-  
+  // Veri yüklendiğinde state'leri doldur
   useEffect(() => {
     if (petToEdit) {
       setName(petToEdit.name || '');
-      setAnimalType(petToEdit.animalType || null);
+      setAnimalType(petToEdit.animal_type || null);
       setBreed(petToEdit.breed || '');
       setAge(petToEdit.age ? petToEdit.age.toString() : '');
       setPurpose(petToEdit.type || 'sahiplenme');
       setDescription(petToEdit.description || '');
-      setImageUri(petToEdit.imageUrl || null);
-      setLocation(petToEdit.location || '');
+      setImageUri(petToEdit.image_url || null);
+      setLocation(petToEdit.location || ''); 
     }
   }, [petToEdit]); 
-  
-  const pickImage = async () => { /* ... (kod aynı) ... */ };
-  const uploadImageAsync = async (uri: string, userId: string) => { /* ... (kod aynı) ... */ };
-  const handleSubmit = async () => { /* ... (kod aynı, AI mantığı yok) ... */ };
 
+  // Fotoğraf seçme (TAM HALİ)
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('İzin Gerekli', '...'); return; }
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [4, 3], quality: 0.8,
+    });
+    if (!result.canceled) { setImageUri(result.assets[0].uri); }
+  };
+  
+  // 2. DÜZELTME: Fotoğrafı 'FormData' kullanarak yükleme
+  const uploadImageAsync = async (uri: string, userId: string): Promise<string> => {
+    try {
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+      const filePath = `public/${fileName}`; 
+      const mimeType = `image/${fileExt === 'png' ? 'png' : 'jpeg'}`;
+
+      const formData = new FormData();
+      formData.append('file', {
+        uri: uri,
+        name: fileName,
+        type: mimeType,
+      } as any);
+
+      const { data, error } = await supabase.storage
+        .from('pet-images')
+        .upload(filePath, formData, {
+          upsert: true, // Düzenleme olduğu için 'true'
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('pet-images')
+        .getPublicUrl(filePath);
+        
+      return publicUrl;
+      
+    } catch (error) {
+      console.error("Supabase yükleme hatası (FormData):", error);
+      throw error;
+    }
+  };
+
+  // Değişiklikleri Kaydetme (TAM HALİ)
+  const handleSubmit = async () => { 
+    if (!user || !petToEdit?.id) {
+      Alert.alert('Hata', 'İlan bilgileri bulunamadı.');
+      return;
+    }
+    
+    if (!name || !animalType || !breed || !age || !description || !location) {
+      Alert.alert('Hata', 'Lütfen * ile işaretli zorunlu alanları doldurun.');
+      return;
+    }
+    
+    setLoadingMessage("Değişiklikler Kaydediliyor...");
+
+    try {
+      const updatedData: Partial<Pet> = { 
+        name: name,
+        animal_type: animalType,
+        breed: breed,
+        age: parseInt(age) || 0,
+        description: description,
+        type: purpose,
+        location: location,
+      };
+
+      // FOTOĞRAF GÜNCELLEME KONTROLÜ
+      if (imageUri && imageUri !== petToEdit.image_url) {
+        setLoadingMessage("Yeni Fotoğraf Yükleniyor...");
+        const newPermanentUrl = await uploadImageAsync(imageUri, user.id);
+        updatedData.image_url = newPermanentUrl; 
+
+        if (petToEdit.image_url && petToEdit.image_url.includes('supabase')) {
+          const pathParts = petToEdit.image_url.split('/pet-images/');
+          if (pathParts.length > 1) {
+            const oldFilePath = pathParts[1];
+            // Eski fotoğrafı sil (Hata verirse önemli değil)
+            try {
+              await supabase.storage.from('pet-images').remove([oldFilePath]);
+            } catch (e) {
+              console.warn("Eski fotoğraf silinemedi:", e);
+            }
+          }
+        }
+      }
+
+      setLoadingMessage("Veritabanı Güncelleniyor...");
+      await updatePet(Number(petToEdit.id), updatedData); 
+      
+      setLoadingMessage(null); 
+      router.back(); 
+
+    } catch (error: any) {
+      setLoadingMessage(null); 
+      console.error("İlan güncellenirken hata:", error.message);
+      Alert.alert('Hata', 'İlan güncellenirken bir sorun oluştu.');
+    }
+  };
   
   if (!petToEdit) {
     return ( <SafeAreaView style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}> <ActivityIndicator size="large" color="#F97316" /> <Text>İlan bilgileri yükleniyor...</Text> </SafeAreaView> );
   }
 
+  // JSX ARAYÜZÜ (TAM HALİ)
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
-        {/* ... (Ad, Tür, Cins, Amaç, Yaş, Konum alanları aynı) ... */}
+        <Text style={styles.label}>Evcil Hayvanın Adı *</Text>
+        <TextInput style={styles.input} value={name} onChangeText={setName} disabled={isLoading} />
+
+        <Text style={styles.label}>Hayvan Türü *</Text>
+        <View style={styles.selectorRow}>
+          <TouchableOpacity style={[styles.selectorButton, animalType === 'kedi' && styles.selectorActive]} onPress={() => { setAnimalType('kedi'); setBreed(breedData.kedi[0]); }} disabled={isLoading}>
+            <Text style={[styles.selectorText, animalType === 'kedi' && styles.selectorTextActive]}>Kedi</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.selectorButton, animalType === 'kopek' && styles.selectorActive]} onPress={() => { setAnimalType('kopek'); setBreed(breedData.kopek[0]); }} disabled={isLoading}>
+            <Text style={[styles.selectorText, animalType === 'kopek' && styles.selectorTextActive]}>Köpek</Text>
+          </TouchableOpacity>
+        </View>
         
-        <Text style={styles.label}>Açıklama *</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          multiline 
-          numberOfLines={4}
-          placeholder="Evcil hayvanınızı tanımlayın..." // Placeholder güncellendi
-          value={description}
-          onChangeText={setDescription} 
-          disabled={isLoading}
+        {animalType && (
+          <>
+            <Text style={styles.label}>Cins *</Text>
+            <View style={styles.pickerContainer}> 
+              <Picker
+                selectedValue={breed}
+                onValueChange={(itemValue) => setBreed(itemValue)}
+                style={styles.picker}
+                enabled={!isLoading}
+              >
+                {breedData[animalType].map((b) => (
+                  <Picker.Item key={b} label={b} value={b} />
+                ))}
+              </Picker>
+            </View>
+          </>
+        )}
+
+        <Text style={styles.label}>Amaç *</Text>
+        <View style={styles.selectorRow}>
+          <TouchableOpacity style={[styles.selectorButton, purpose === 'sahiplenme' && styles.selectorActive]} onPress={() => setPurpose('sahiplenme')} disabled={isLoading}>
+            <Text style={[styles.selectorText, purpose === 'sahiplenme' && styles.selectorTextActive]}>Sahiplendirme</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.selectorButton, purpose === 'ciftlestirme' && styles.selectorActive]} onPress={() => setPurpose('ciftlestirme')} disabled={isLoading}>
+            <Text style={[styles.selectorText, purpose === 'ciftlestirme' && styles.selectorTextActive]}>Çiftleştirme</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.label}>Yaş (yıl) *</Text>
+        <TextInput style={styles.input} keyboardType="numeric" value={age} onChangeText={setAge} disabled={isLoading} />
+        
+        <Text style={styles.label}>Konum *</Text>
+        <TextInput 
+          style={styles.input} 
+          value={location} 
+          onChangeText={setLocation} 
+          placeholder="örn: Kadıköy, İstanbul"
+          disabled={isLoading} 
         />
         
-        {/* YAPAY ZEKA BUTONU BURADAN KALDIRILDI */}
-
-        {/* Fotoğraf Alanı (Güncellenebilir) */}
+        <Text style={styles.label}>Açıklama *</Text>
+        <TextInput style={[styles.input, styles.textArea]} multiline numberOfLines={4} placeholder="Evcil hayvanınızı tanımlayın..." value={description} onChangeText={setDescription} disabled={isLoading} />
+        
         <Text style={styles.label}>Fotoğraf (Değiştirmek için dokunun)</Text>
         <TouchableOpacity style={styles.imageUploadArea} onPress={pickImage} disabled={isLoading}>
           {imageUri ? (
@@ -97,7 +238,6 @@ export default function EditPetScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Kaydet / İptal Butonları */}
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()} disabled={isLoading}>
             <Text style={styles.cancelButtonText}>İptal</Text>
@@ -119,12 +259,8 @@ export default function EditPetScreen() {
   );
 }
 
-// Stiller
+// Stiller (TAM HALİ)
 const styles = StyleSheet.create({
-  // ... (Tüm stillerinizi koruyun) ...
-  // Lütfen 'aiButton', 'aiButtonText' ve 'aiButtonDisabled' stillerini SİLİN.
-  
-  // ... (Geri kalan tüm stiller aynı) ...
   container: { flex: 1, backgroundColor: '#FFFBF5', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
   scrollContent: { padding: 20 },
   label: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8, marginTop: 15 },
