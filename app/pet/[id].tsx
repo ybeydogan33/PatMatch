@@ -1,4 +1,4 @@
-// app/pet/[id].tsx (GÜNCELLENMİŞ HALİ - Manuel Geri Butonu Eklendi)
+// app/pet/[id].tsx (GÜNCELLENMİŞ HALİ - Konum eklendi)
 
 import { useAuth } from '@/context/AuthContext';
 import { PetsContext } from '@/context/PetsContext';
@@ -16,10 +16,9 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-// Firebase importları SİLİNDİ
 
 export default function PetDetailScreen() {
-  const router = useRouter(); // 1. YENİLİK: 'router'ı tanımladık
+  const router = useRouter(); 
   const { id } = useLocalSearchParams(); 
   const { pets } = useContext(PetsContext); 
   const { user } = useAuth(); 
@@ -48,12 +47,17 @@ export default function PetDetailScreen() {
 
 
   if (!pet) {
-    // ... (Hata ekranı aynı) ...
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: "Hata" }} />
+        <Text style={styles.name}>İlan Bulunamadı</Text>
+      </SafeAreaView>
+    );
   }
   
   return (
     <SafeAreaView style={styles.container}>
-      {/* 2. YENİLİK: 'headerLeft' (manuel geri butonu) eklendi */}
+      {/* Manuel Geri Butonu (Aynı) */}
       <Stack.Screen 
         options={{ 
           title: pet.name, 
@@ -61,7 +65,6 @@ export default function PetDetailScreen() {
           headerLeft: () => (
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="chevron-back" size={24} color="#F97316" />
-              {/* 'Geri' yazısı yerine 'Profil' yazabiliriz, ancak bu daha karmaşık */}
               <Text style={styles.backButtonText}>Geri</Text>
             </TouchableOpacity>
           )
@@ -75,6 +78,7 @@ export default function PetDetailScreen() {
           <Text style={styles.name}>{pet.name}</Text>
           <Text style={styles.breed}>{pet.breed} ({pet.animal_type === 'kedi' ? 'Kedi' : 'Köpek'})</Text>
           
+          {/* 1. YENİLİK: 'infoRow' artık 3 kutu içeriyor */}
           <View style={styles.infoRow}>
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>YAŞ</Text>
@@ -87,11 +91,15 @@ export default function PetDetailScreen() {
               </Text>
             </View>
           </View>
+          {/* 2. YENİLİK: Ayrı bir 'Konum' bölümü eklendi */}
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={20} color="#555" />
+            <Text style={styles.locationText}>{pet.location || 'Konum belirtilmemiş'}</Text>
+          </View>
           
           <Text style={styles.descriptionHeader}>Açıklama</Text>
           <Text style={styles.description}>{pet.description}</Text>
           
-          {/* İletişime Geç Butonu (Aynı) */}
           {user && user.id !== pet.owner_id && (
             <TouchableOpacity style={styles.contactButton} onPress={handleStartChat}>
               <Ionicons name="chatbubble-ellipses-outline" size={24} color="#fff" />
@@ -107,25 +115,48 @@ export default function PetDetailScreen() {
 // Stiller
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFBF5' },
-  // 3. YENİ STİLLER:
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: 0,
-  },
-  backButtonText: {
-    color: '#F97316',
-    fontSize: 17,
-  },
-  // ---
+  backButton: { flexDirection: 'row', alignItems: 'center', paddingLeft: 0 },
+  backButtonText: { color: '#F97316', fontSize: 17 },
   image: { width: '100%', height: 300, resizeMode: 'cover' },
   contentContainer: { padding: 20 },
   name: { fontSize: 28, fontWeight: 'bold', color: '#333' },
-  breed: { fontSize: 18, color: '#666', marginBottom: 20, textTransform: 'capitalize' },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20 },
-  infoBox: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderRadius: 10, padding: 15, alignItems: 'center', width: '45%' },
+  breed: { fontSize: 18, color: '#666', marginBottom: 15, textTransform: 'capitalize' },
+  infoRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', // 'space-around' yerine 'space-between'
+    marginBottom: 15,
+  },
+  infoBox: { 
+    backgroundColor: '#fff', 
+    borderColor: '#ddd', 
+    borderWidth: 1, 
+    borderRadius: 10, 
+    padding: 15, 
+    alignItems: 'center', 
+    width: '48%', // Genişliği %48 yaptık (arada boşluk kalması için)
+  },
   infoLabel: { fontSize: 12, color: '#888', fontWeight: 'bold' },
   infoValue: { fontSize: 16, color: '#333', fontWeight: 'bold', textTransform: 'capitalize' },
+  
+  // 3. YENİ STİLLER:
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
+  },
+  locationText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 10,
+    fontWeight: '500',
+  },
+  // ---
+  
   descriptionHeader: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 10 },
   description: { fontSize: 16, color: '#555', lineHeight: 24, marginBottom: 30 },
   contactButton: { backgroundColor: '#F97316', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 12 },

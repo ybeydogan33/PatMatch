@@ -1,4 +1,4 @@
-// context/PetsContext.tsx
+// context/PetsContext.tsx (SON HALİ - Manuel State Güncellemesi)
 
 import type { Pet } from '@/components/PetCard';
 import { supabase } from '@/supabase';
@@ -6,11 +6,12 @@ import React, { createContext, ReactNode, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from './AuthContext';
 
-// Context tipi
+// Context arayüzümüz
 interface IPetsContext {
   pets: Pet[];
   loading: boolean;
-  addPet: (pet: Omit<Pet, 'id' | 'created_at' | 'contactName'>) => Promise<any>;
+  fetchPets: () => Promise<void>; // 1. YENİLİK: Yenileme fonksiyonu
+  addPet: (pet: Omit<Pet, 'id' | 'created_at' | 'contactName' | 'owner_id'>) => Promise<any>;
   updatePet: (petId: number, updatedData: Partial<Pet>) => Promise<any>;
   deletePet: (pet: Pet) => Promise<any>;
 }
@@ -18,30 +19,41 @@ interface IPetsContext {
 export const PetsContext = createContext<IPetsContext>({
   pets: [],
   loading: true,
+  fetchPets: async () => {},
   addPet: async () => {},
   updatePet: async () => {},
   deletePet: async () => {},
 });
 
+// Provider bileşenimiz
 export const PetsProvider = ({ children }: { children: ReactNode }) => {
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user, profile } = useAuth();
+  const { user, profile } = useAuth(); 
 
-  // 🔹 İlanları çek
+  // Veritabanından İlanları Çekme
+  useEffect(() => {
+    // Sadece kullanıcı giriş yaptıysa ilanları çek
+    if (user && profile) {
+      fetchPets();
+    } else if (!user) {
+      setPets([]);
+      setLoading(false);
+    }
+    
+    // 2. DÜZELTME: Anlık (Realtime) dinleyiciyi SİLDİK.
+    // Bu, "race condition" (zamanlama) sorununa neden oluyordu.
+    
+  }, [user, profile]);
+
+  // Tüm ilanları çeken fonksiyon
   const fetchPets = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('pets')
-        .select(`
-          *,
-          owner:profiles (
-            display_name,
-            photo_url
-          )
-        `)
-        .order('created_at', { ascending: false });
+        .select(`*, owner:profiles (display_name, photo_url)`)
+        .order('created_at', { ascending: false }); 
 
       if (error) throw error;
 
@@ -49,104 +61,91 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
         const formattedPets = data.map((pet: any) => ({
           ...pet,
           contactName: pet.owner?.display_name || 'Bilinmeyen',
-          contactPhoto: pet.owner?.photo_url || null,
         })) as Pet[];
-
         setPets(formattedPets);
       }
-    } catch (error) {
-      console.error('Supabase ilanları çekerken hata:', error);
-      Alert.alert('Hata', 'İlanlar yüklenemedi.');
+    } catch (error: any) {
+      console.error("Supabase ilanları çekerken hata:", error.message);
+      Alert.alert("Hata", "İlanlar yüklenemedi.");
     } finally {
       setLoading(false);
     }
   };
-
-  // 🔹 İlk yüklemede ilanları getir
-  useEffect(() => {
-    if (user && profile) {
-      fetchPets();
-    } else if (!user) {
-      setPets([]);
-      setLoading(false);
-    }
-  }, [user, profile]);
-
-  // 🔹 Realtime (ekleme / silme / güncelleme olduğunda listeyi yenile)
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel('public:pets')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pets' },
-        () => {
-          fetchPets();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+  
+  // Supabase'e 'addPet' (İlan Ekle)
+  const addPet = async (petToAdd: Omit<Pet, 'id' | 'created_at' | 'contactName' | 'owner_id'>) => {
+    if (!user) throw new Error("İlan eklemek için giriş yapılmalı.");
+    
+    const newPetData = {
+      ...petToAdd,
+      owner_id: user.id,
+      created_at: new Date().toISOString()
     };
-  }, [user]);
-
-  // 🔹 İlan ekle
-  const addPet = async (
-    petToAdd: Omit<Pet, 'id' | 'created_at' | 'contactName'>
-  ) => {
-    if (!user) throw new Error('İlan eklemek için giriş yapılmalı.');
-
-    const { error } = await supabase
+    
+    // 3. YENİLİK: 'insert' komutuna '.select()' ekleyerek
+    // veritabanının oluşturduğu tam 'Pet' objesini geri alıyoruz
+    const { data, error } = await supabase
       .from('pets')
-      .insert([{ ...petToAdd, owner_id: user.id }]);
-
-    if (error) {
-      console.error('İlan eklenirken hata:', error);
-      Alert.alert('Hata', 'İlan eklenirken bir sorun oluştu.');
-      throw error;
-    }
+      .insert(newPetData)
+      .select() // <-- Yeni eklenen
+      .single(); // <-- Yeni eklenen
+      
+    if (error) throw error;
+    
+    // 4. YENİLİK: Listeyi manuel olarak güncelle
+    // (Henüz 'owner' bilgisi yok, ama ID ve isim var)
+    setPets(prevPets => [{ ...data, contactName: profile?.display_name }, ...prevPets] as Pet[]);
   };
-
-  // 🔹 İlan sil
+  
+  // Supabase'den 'deletePet' (İlan Sil)
   const deletePet = async (petToDelete: Pet) => {
-    if (!petToDelete.id) throw new Error('İlan ID’si bulunamadı.');
+    if (!petToDelete.id) throw new Error("İlan ID'si bulunamadı.");
+    
+    try {
+      const { error: dbError } = await supabase
+        .from('pets')
+        .delete()
+        .eq('id', petToDelete.id);
+      if (dbError) throw dbError;
 
-    const { error: dbError } = await supabase
-      .from('pets')
-      .delete()
-      .eq('id', petToDelete.id);
-
-    if (dbError) throw dbError;
-
-    if (petToDelete.image_url) {
-      const pathParts = petToDelete.image_url.split('/pet-images/');
-      if (pathParts.length > 1) {
-        const filePath = pathParts[1];
-        await supabase.storage.from('pet-images').remove([filePath]);
+      if (petToDelete.image_url && petToDelete.image_url.includes('supabase')) {
+        const pathParts = petToDelete.image_url.split('/pet-images/');
+        if (pathParts.length > 1) {
+          const filePath = pathParts[1];
+          await supabase.storage.from('pet-images').remove([filePath]);
+        }
       }
+      // 5. YENİLİK: Manuel state güncellemesini geri getirdik
+      setPets(prevPets => prevPets.filter(p => p.id !== petToDelete.id));
+    } catch (error) {
+      console.error("İlan silinirken hata:", error);
+      throw new Error("İlan silinemedi.");
     }
-
-    setPets((prev) => prev.filter((p) => p.id !== petToDelete.id));
   };
 
-  // 🔹 İlan güncelle
+  // Supabase'de 'updatePet' (İlan Güncelle)
   const updatePet = async (petId: number, updatedData: Partial<Pet>) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('pets')
       .update(updatedData)
-      .eq('id', petId);
-
-    if (error) {
-      console.error('İlan güncellenirken hata:', error);
-      Alert.alert('Hata', 'İlan güncellenemedi.');
-      throw error;
-    }
+      .eq('id', petId)
+      .select() // 6. YENİLİK: Güncellenen satırı geri al
+      .single();
+      
+    if (error) throw error;
+    
+    // 7. YENİLİK: Listeyi manuel olarak güncelle
+    setPets(prevPets => 
+      prevPets.map(p => 
+        p.id === petId ? { ...p, ...data } : p // Eski 'p'yi güncellenmiş 'data' ile değiştir
+      )
+    );
   };
 
   return (
-    <PetsContext.Provider value={{ pets, loading, addPet, deletePet, updatePet }}>
+    <PetsContext.Provider 
+      value={{ pets, loading, fetchPets, addPet, deletePet, updatePet }}
+    >
       {children}
     </PetsContext.Provider>
   );
