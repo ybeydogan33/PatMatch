@@ -24,11 +24,16 @@ import {
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { user, profile } = useAuth(); 
+  const { user, profile, refreshProfile } = useAuth();
 
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
   const [imageUri, setImageUri] = useState<string | null>(profile?.photo_url || null);
   
+  // --- YENİ EKLENDİ (1/3) ---
+  // Konum (İl) için state
+  const [city, setCity] = useState(profile?.city || '');
+  // --- YENİ EKLENDİ BİTTİ ---
+
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
 
@@ -108,7 +113,6 @@ export default function EditProfileScreen() {
       if (imageUri && imageUri !== profile.photo_url) {
         setLoadingMessage("Yeni Fotoğraf Yükleniyor...");
         newPhotoURL = await uploadImageAsync(imageUri, user.id);
-        // (Not: Supabase 'upsert: true' kullandığı için eski fotoğrafı silmemize gerek yok, üzerine yazar)
       }
       
       setLoadingMessage("Veritabanı Kaydediliyor...");
@@ -116,6 +120,11 @@ export default function EditProfileScreen() {
       const updates = {
         display_name: displayName.trim(),
         photo_url: newPhotoURL,
+        
+        // --- YENİ EKLENDİ (3/3) ---
+        // 'city' alanını da güncellemeye dahil et
+        city: city.trim(),
+        // --- YENİ EKLENDİ BİTTİ ---
       };
 
       const { error } = await supabase
@@ -124,6 +133,9 @@ export default function EditProfileScreen() {
         .eq('id', user.id); 
         
       if (error) throw error;
+      if (refreshProfile) {
+        await refreshProfile();
+      }
       
       setLoadingMessage(null);
       Alert.alert("Başarılı", "Profiliniz güncellendi.");
@@ -163,6 +175,18 @@ export default function EditProfileScreen() {
           placeholder="Herkesin göreceği adınız"
           disabled={isLoading}
         />
+
+        {/* --- YENİ EKLENDİ (2/3) --- */}
+        <Text style={styles.label}>Konum (İl)</Text>
+        <TextInput
+          style={styles.input}
+          value={city}
+          onChangeText={setCity}
+          placeholder="Örn: Muş"
+          autoCapitalize="words" // Kelimelerin ilk harfini büyük yapar
+          disabled={isLoading}
+        />
+        {/* --- YENİ EKLENDİ BİTTİ --- */}
 
         <Text style={styles.label}>E-posta (Değiştirilemez)</Text>
         <TextInput

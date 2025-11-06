@@ -1,6 +1,6 @@
-// context/AuthContext.tsx (TEMİZ SUPABASE SÜRÜMÜ)
+// context/AuthContext.tsx — GÜNCELLENMİŞ (Supabase + refreshProfile destekli)
 
-import { supabase } from '@/supabase'; // Sadece Supabase client
+import { supabase } from '@/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
@@ -10,6 +10,7 @@ export interface UserProfile {
   display_name: string;
   email: string;
   photo_url: string;
+  city?: string; // ✅ city alanı da eklendi (isteğe bağlı)
 }
 
 interface IAuthContext {
@@ -17,10 +18,11 @@ interface IAuthContext {
   profile: UserProfile | null;
   session: Session | null;
   loading: boolean;
-  totalUnreadCount: number; // Şimdilik 0
+  totalUnreadCount: number;
   login: (email: string, pass: string) => Promise<any>;
   register: (email: string, pass: string, displayName: string) => Promise<any>;
   logout: () => Promise<void>;
+  refreshProfile?: () => Promise<void>; // ✅ eklendi
 }
 
 export const AuthContext = createContext<IAuthContext>({
@@ -32,11 +34,10 @@ export const AuthContext = createContext<IAuthContext>({
   login: async () => {},
   register: async () => {},
   logout: async () => {},
+  refreshProfile: async () => {},
 });
 
-export const useAuth = () => {
-  return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -44,16 +45,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Supabase Auth dinleyicisi
+  // 🔹 Profil verisini Supabase'den çeken fonksiyon
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error, status } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error && status !== 406) throw error;
+      if (data) setProfile(data as UserProfile);
+    } catch (error) {
+      console.error('Profil çekilirken hata:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔹 refreshProfile — Dışarıdan manuel çağrılabilir versiyonu
+  const refreshProfile = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (error) throw error;
+      if (data) setProfile(data as UserProfile);
+    } catch (error) {
+      console.error('Profil yenileme hatası:', error);
+    }
+  };
+
+  // 🔹 Supabase Auth dinleyicisi
   useEffect(() => {
     setLoading(true);
-    
-    // 1. Mevcut oturumu (session) al
+
+    // 1️⃣ Mevcut oturumu al
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      
-      // 2. Oturum varsa, profili al
+
       if (session?.user) {
         fetchProfile(session.user.id);
       } else {
@@ -61,96 +95,63 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    // 3. Auth durumundaki değişiklikleri (GİRİŞ, ÇIKIŞ) dinle
+    // 2️⃣ Auth durum değişimlerini dinle
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
-        // 4. Yeni bir giriş olduysa, profili al
+
         if (session?.user) {
           fetchProfile(session.user.id);
         } else {
-          setProfile(null); // Çıkış yapıldıysa profili temizle
+          setProfile(null);
           setLoading(false);
         }
       }
     );
 
-    // Dinleyicileri temizle
+    // Cleanup
     return () => {
       authListener?.subscription.unsubscribe();
     };
   }, []);
 
-  // Profili çeken fonksiyon
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error, status } = await supabase
-        .from('profiles')
-        .select(`*`)
-        .eq('id', userId) 
-        .single(); 
-
-      if (error && status !== 406) {
-        throw error;
-      }
-      if (data) {
-        setProfile(data as UserProfile);
-      }
-    } catch (error) {
-      console.error('Profil çekilirken hata:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Supabase login
+  // 🔹 Auth işlemleri
   const login = async (email: string, pass: string) => {
     return supabase.auth.signInWithPassword({ email, password: pass });
   };
 
-  // Supabase register
   const register = async (email: string, pass: string, displayName: string) => {
-    // (Bu, register.tsx'teki manuel 'insert' yöntemine güvenir,
-    // çünkü SQL trigger'ını kaldırmıştık)
     return supabase.auth.signUp({
       email,
       password: pass,
       options: {
         data: {
           display_name: displayName,
-          photo_url: `https://ui-avatars.com/api/?name=${displayName.replace(' ', '+')}&background=random`
-        }
-      }
+          photo_url: `https://ui-avatars.com/api/?name=${displayName.replace(' ', '+')}&background=random`,
+        },
+      },
     });
   };
 
-  // Supabase logout
   const logout = async () => {
     await supabase.auth.signOut();
   };
 
-
+  // 🔹 Context değerleri
   const value = {
     user,
-    profile, 
+    profile,
     session,
     loading,
-    totalUnreadCount: 0, // Sohbeti bağlayana kadar 0
+    totalUnreadCount: 0,
     login,
     register,
-    logout
+    logout,
+    refreshProfile, // ✅ export edildi
   };
 
-  // Yükleme devam ederken (auth durumu kontrol edilirken) hiçbir şey gösterme
-  if (loading) {
-    return null; 
-  }
+  if (loading) return null;
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

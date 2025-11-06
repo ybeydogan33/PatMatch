@@ -1,4 +1,4 @@
-// context/PetsContext.tsx (SON HALİ - Manuel State Güncellemesi)
+// context/PetsContext.tsx (SON HALİ - Realtime Düzeltmesi)
 
 import type { Pet } from '@/components/PetCard';
 import { supabase } from '@/supabase';
@@ -10,7 +10,7 @@ import { useAuth } from './AuthContext';
 interface IPetsContext {
   pets: Pet[];
   loading: boolean;
-  fetchPets: () => Promise<void>; // 1. YENİLİK: Yenileme fonksiyonu
+  fetchPets: () => Promise<void>; // Yenileme fonksiyonu
   addPet: (pet: Omit<Pet, 'id' | 'created_at' | 'contactName' | 'owner_id'>) => Promise<any>;
   updatePet: (petId: number, updatedData: Partial<Pet>) => Promise<any>;
   deletePet: (pet: Pet) => Promise<any>;
@@ -31,24 +31,45 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const { user, profile } = useAuth(); 
 
-  // Veritabanından İlanları Çekme
+  // 1. DÜZELTME: Veritabanını Sadece Bir Kez Değil, ANLIK (Realtime) Dinleme
   useEffect(() => {
-    // Sadece kullanıcı giriş yaptıysa ilanları çek
+    // Sadece kullanıcı giriş yaptıysa dinle
     if (user && profile) {
-      fetchPets();
+      setLoading(true);
+      
+      // 1. Başlangıç verisini çek
+      fetchPets(); 
+
+      // 2. 'pets' tablosundaki TÜM değişiklikleri (INSERT, UPDATE, DELETE) dinle
+      const channel = supabase.channel('public:pets')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'pets' },
+          (payload) => {
+            console.log('Pets tablosunda değişiklik algılandı, liste yenileniyor...');
+            // Değişiklik olduğunda, listeyi en baştan, taze veriyle çek
+            // Bu, 'diğer telefonun' da güncellenmesini sağlar
+            fetchPets();
+          }
+        )
+        .subscribe();
+      
+      // Component kapandığında dinleyiciyi kapat
+      return () => {
+        supabase.removeChannel(channel);
+      };
+
     } else if (!user) {
+      // Kullanıcı çıkış yaptıysa listeyi temizle
       setPets([]);
       setLoading(false);
     }
-    
-    // 2. DÜZELTME: Anlık (Realtime) dinleyiciyi SİLDİK.
-    // Bu, "race condition" (zamanlama) sorununa neden oluyordu.
-    
-  }, [user, profile]);
+  }, [user, profile]); // Kullanıcı veya profil yüklendiğinde çalış
 
   // Tüm ilanları çeken fonksiyon
   const fetchPets = async () => {
-    setLoading(true);
+    // 'loading' state'ini burada 'true' yapmıyoruz ki
+    // anlık güncellemelerde (arkaplanda) ekran titremesin
     try {
       const { data, error } = await supabase
         .from('pets')
@@ -68,11 +89,11 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
       console.error("Supabase ilanları çekerken hata:", error.message);
       Alert.alert("Hata", "İlanlar yüklenemedi.");
     } finally {
-      setLoading(false);
+      setLoading(false); // Sadece ilk yüklemede 'false' yap
     }
   };
   
-  // Supabase'e 'addPet' (İlan Ekle)
+  // 2. DÜZELTME: 'addPet' (İlan Ekle) - Manuel state güncellemesi SİLİNDİ
   const addPet = async (petToAdd: Omit<Pet, 'id' | 'created_at' | 'contactName' | 'owner_id'>) => {
     if (!user) throw new Error("İlan eklemek için giriş yapılmalı.");
     
@@ -82,22 +103,13 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
       created_at: new Date().toISOString()
     };
     
-    // 3. YENİLİK: 'insert' komutuna '.select()' ekleyerek
-    // veritabanının oluşturduğu tam 'Pet' objesini geri alıyoruz
-    const { data, error } = await supabase
-      .from('pets')
-      .insert(newPetData)
-      .select() // <-- Yeni eklenen
-      .single(); // <-- Yeni eklenen
-      
+    // Supabase'e ekle VE HATA VARSA Fırlat
+    // 'select()'i kaldırdık, çünkü Realtime dinleyici listeyi yenileyecek.
+    const { error } = await supabase.from('pets').insert([newPetData]);
     if (error) throw error;
-    
-    // 4. YENİLİK: Listeyi manuel olarak güncelle
-    // (Henüz 'owner' bilgisi yok, ama ID ve isim var)
-    setPets(prevPets => [{ ...data, contactName: profile?.display_name }, ...prevPets] as Pet[]);
   };
   
-  // Supabase'den 'deletePet' (İlan Sil)
+  // 3. DÜZELTME: 'deletePet' (İlan Sil) - Manuel state güncellemesi SİLİNDİ
   const deletePet = async (petToDelete: Pet) => {
     if (!petToDelete.id) throw new Error("İlan ID'si bulunamadı.");
     
@@ -106,7 +118,7 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
         .from('pets')
         .delete()
         .eq('id', petToDelete.id);
-      if (dbError) throw dbError;
+      if (dbError) throw dbError; 
 
       if (petToDelete.image_url && petToDelete.image_url.includes('supabase')) {
         const pathParts = petToDelete.image_url.split('/pet-images/');
@@ -115,31 +127,22 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
           await supabase.storage.from('pet-images').remove([filePath]);
         }
       }
-      // 5. YENİLİK: Manuel state güncellemesini geri getirdik
-      setPets(prevPets => prevPets.filter(p => p.id !== petToDelete.id));
+      // 'setPets'i kaldırdık, Realtime dinleyici halledecek
     } catch (error) {
       console.error("İlan silinirken hata:", error);
       throw new Error("İlan silinemedi.");
     }
   };
 
-  // Supabase'de 'updatePet' (İlan Güncelle)
+  // 4. DÜZELTME: 'updatePet' (İlan Güncelle) - Manuel state güncellemesi SİLİNDİ
   const updatePet = async (petId: number, updatedData: Partial<Pet>) => {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('pets')
       .update(updatedData)
-      .eq('id', petId)
-      .select() // 6. YENİLİK: Güncellenen satırı geri al
-      .single();
+      .eq('id', petId);
       
-    if (error) throw error;
-    
-    // 7. YENİLİK: Listeyi manuel olarak güncelle
-    setPets(prevPets => 
-      prevPets.map(p => 
-        p.id === petId ? { ...p, ...data } : p // Eski 'p'yi güncellenmiş 'data' ile değiştir
-      )
-    );
+    if (error) throw error; // Hata varsa fırlat
+    // 'setPets'i kaldırdık, Realtime dinleyici halledecek
   };
 
   return (
