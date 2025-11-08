@@ -6,7 +6,13 @@
       "@/*": [
         "./*"
       ]
-    }
+    },
+    // EKSİK KISIM BURASIYDI
+    "plugins": [
+      {
+        "name": "expo-router"
+      }
+    ]
   },
   "include": [
     "**/*.ts",

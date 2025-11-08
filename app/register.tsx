@@ -30,8 +30,7 @@ export default function RegisterScreen() {
 
       // 4. YENİLİK: Supabase e-posta onayı gerektirir (varsayılan)
       Alert.alert(
-        'Kayıt Başarılı', 
-        'Hesabınızı doğrulamak için lütfen e-posta adresinize gönderilen linke tıklayın.'
+        'Kayıt Başarılı',
       );
       router.replace('/login');
       

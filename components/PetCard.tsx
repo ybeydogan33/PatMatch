@@ -19,6 +19,7 @@ export interface Pet {
   type: 'sahiplenme' | 'ciftlestirme';
   image_url?: string; // 'imageUrl' yerine 'image_url'
   created_at?: string;
+  image_gallery?: string;
 }
 
 export interface PetCardProps {
@@ -72,11 +73,14 @@ const PetCard: React.FC<PetCardProps> = ({ pet, showAdminControls = false }) => 
         </View>
         
         {/* 2. YENİLİK: 'pet.image_url' (Firebase'deki 'imageUrl' yerine) */}
-        {pet.image_url ? (
-          <Image source={{ uri: pet.image_url }} style={styles.cardImage} />
-        ) : (
-          <View style={styles.cardImagePlaceholder} />
-        )}
+{pet.image_gallery?.length ? (
+  <Image source={{ uri: pet.image_gallery[0] }} style={styles.cardImage} />
+) : pet.image_url ? (
+  <Image source={{ uri: pet.image_url }} style={styles.cardImage} />
+) : (
+  <View style={styles.cardImagePlaceholder} />
+)}
+
         
         <View style={styles.contentContainer}>
           <View style={styles.titleRow}>

@@ -1,16 +1,14 @@
-// context/PetsContext.tsx (SON HALİ - Realtime Düzeltmesi)
+// context/PetsContext.tsx (Kurşun Geçirmez Sürüm)
 
 import type { Pet } from '@/components/PetCard';
 import { supabase } from '@/supabase';
 import React, { createContext, ReactNode, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from './AuthContext';
-
-// Context arayüzümüz
 interface IPetsContext {
   pets: Pet[];
   loading: boolean;
-  fetchPets: () => Promise<void>; // Yenileme fonksiyonu
+  fetchPets: () => Promise<void>;
   addPet: (pet: Omit<Pet, 'id' | 'created_at' | 'contactName' | 'owner_id'>) => Promise<any>;
   updatePet: (petId: number, updatedData: Partial<Pet>) => Promise<any>;
   deletePet: (pet: Pet) => Promise<any>;
@@ -25,51 +23,38 @@ export const PetsContext = createContext<IPetsContext>({
   deletePet: async () => {},
 });
 
-// Provider bileşenimiz
 export const PetsProvider = ({ children }: { children: ReactNode }) => {
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
   const { user, profile } = useAuth(); 
 
-  // 1. DÜZELTME: Veritabanını Sadece Bir Kez Değil, ANLIK (Realtime) Dinleme
+  // Realtime dinleyici (Aynı)
   useEffect(() => {
-    // Sadece kullanıcı giriş yaptıysa dinle
     if (user && profile) {
       setLoading(true);
-      
-      // 1. Başlangıç verisini çek
       fetchPets(); 
-
-      // 2. 'pets' tablosundaki TÜM değişiklikleri (INSERT, UPDATE, DELETE) dinle
       const channel = supabase.channel('public:pets')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'pets' },
           (payload) => {
             console.log('Pets tablosunda değişiklik algılandı, liste yenileniyor...');
-            // Değişiklik olduğunda, listeyi en baştan, taze veriyle çek
-            // Bu, 'diğer telefonun' da güncellenmesini sağlar
             fetchPets();
           }
         )
         .subscribe();
       
-      // Component kapandığında dinleyiciyi kapat
       return () => {
         supabase.removeChannel(channel);
       };
-
     } else if (!user) {
-      // Kullanıcı çıkış yaptıysa listeyi temizle
       setPets([]);
       setLoading(false);
     }
-  }, [user, profile]); // Kullanıcı veya profil yüklendiğinde çalış
+  }, [user, profile]);
 
   // Tüm ilanları çeken fonksiyon
   const fetchPets = async () => {
-    // 'loading' state'ini burada 'true' yapmıyoruz ki
-    // anlık güncellemelerde (arkaplanda) ekran titremesin
     try {
       const { data, error } = await supabase
         .from('pets')
@@ -79,47 +64,67 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
       if (error) throw error;
 
       if (data) {
-        const formattedPets = data.map((pet: any) => ({
-          ...pet,
-          contactName: pet.owner?.display_name || 'Bilinmeyen',
-        })) as Pet[];
+        // --- GÜÇLENDİRİLMİŞ DÜZELTME ---
+        const formattedPets = data.map((pet: any) => {
+          
+          let gallery: string[] = []; // Boş bir galeri dizisi oluştur
+          const rawGallery = pet.image_gallery; // e.g., "{url1,url2}" VEYA null VEYA ['url1']
+
+          // 1. İdeal durum: Veri zaten bir diziyse (Array)
+          if (Array.isArray(rawGallery) && rawGallery.length > 0) {
+            gallery = rawGallery;
+          
+          // 2. Olası durum: Veri "{url1,url2}" gibi bir metin (string) ise
+          } else if (typeof rawGallery === 'string' && rawGallery.startsWith('{') && rawGallery.endsWith('}')) {
+            if (rawGallery === '{}') { // Boş galeri metni
+              gallery = [];
+            } else {
+              // Metni "temizle" (parantezleri kaldır), tırnakları kaldır ve virgülle ayır
+              gallery = rawGallery
+                .substring(1, rawGallery.length - 1) // { } kaldır
+                .replace(/"/g, '') // " tırnakları kaldır
+                .split(','); // , ile ayır
+            }
+          
+          // 3. Geriye dönük uyumluluk: Galeri hala boşsa ve eski 'image_url' varsa
+          } else if (pet.image_url) {
+            gallery = [pet.image_url];
+          }
+          
+          // 4. 'pet' nesnesindeki 'image_gallery'yi DİZİ haliyle değiştir
+          return {
+            ...pet,
+            image_gallery: gallery, 
+            contactName: pet.owner?.display_name || 'Bilinmeyen',
+          };
+        }) as Pet[];
+        // --- DÜZELTME BİTTİ ---
+        
         setPets(formattedPets);
       }
     } catch (error: any) {
       console.error("Supabase ilanları çekerken hata:", error.message);
       Alert.alert("Hata", "İlanlar yüklenemedi.");
     } finally {
-      setLoading(false); // Sadece ilk yüklemede 'false' yap
+      setLoading(false); 
     }
   };
   
-  // 2. DÜZELTME: 'addPet' (İlan Ekle) - Manuel state güncellemesi SİLİNDİ
+  // addPet, deletePet, updatePet (Aynı, değişiklik yok)
+  // ... (Fonksiyonların geri kalanı aynı)
   const addPet = async (petToAdd: Omit<Pet, 'id' | 'created_at' | 'contactName' | 'owner_id'>) => {
     if (!user) throw new Error("İlan eklemek için giriş yapılmalı.");
-    
-    const newPetData = {
-      ...petToAdd,
-      owner_id: user.id,
-      created_at: new Date().toISOString()
-    };
-    
-    // Supabase'e ekle VE HATA VARSA Fırlat
-    // 'select()'i kaldırdık, çünkü Realtime dinleyici listeyi yenileyecek.
+    const newPetData = { ...petToAdd, owner_id: user.id, created_at: new Date().toISOString() };
     const { error } = await supabase.from('pets').insert([newPetData]);
     if (error) throw error;
   };
   
-  // 3. DÜZELTME: 'deletePet' (İlan Sil) - Manuel state güncellemesi SİLİNDİ
   const deletePet = async (petToDelete: Pet) => {
     if (!petToDelete.id) throw new Error("İlan ID'si bulunamadı.");
-    
     try {
-      const { error: dbError } = await supabase
-        .from('pets')
-        .delete()
-        .eq('id', petToDelete.id);
+      const { error: dbError } = await supabase.from('pets').delete().eq('id', petToDelete.id);
       if (dbError) throw dbError; 
-
+      // Not: Galerideki TÜM fotoları silmek için 'petToDelete.image_gallery'yi dönmek gerekir.
       if (petToDelete.image_url && petToDelete.image_url.includes('supabase')) {
         const pathParts = petToDelete.image_url.split('/pet-images/');
         if (pathParts.length > 1) {
@@ -127,23 +132,14 @@ export const PetsProvider = ({ children }: { children: ReactNode }) => {
           await supabase.storage.from('pet-images').remove([filePath]);
         }
       }
-      // 'setPets'i kaldırdık, Realtime dinleyici halledecek
-    } catch (error) {
-      console.error("İlan silinirken hata:", error);
-      throw new Error("İlan silinemedi.");
-    }
+    } catch (error) { console.error("İlan silinirken hata:", error); throw new Error("İlan silinemedi."); }
   };
 
-  // 4. DÜZELTME: 'updatePet' (İlan Güncelle) - Manuel state güncellemesi SİLİNDİ
   const updatePet = async (petId: number, updatedData: Partial<Pet>) => {
-    const { error } = await supabase
-      .from('pets')
-      .update(updatedData)
-      .eq('id', petId);
-      
-    if (error) throw error; // Hata varsa fırlat
-    // 'setPets'i kaldırdık, Realtime dinleyici halledecek
+    const { error } = await supabase.from('pets').update(updatedData).eq('id', petId);
+    if (error) throw error; 
   };
+
 
   return (
     <PetsContext.Provider 

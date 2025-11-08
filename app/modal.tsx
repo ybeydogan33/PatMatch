@@ -1,14 +1,13 @@
-// app/modal.tsx (SON HALİ - Modern Seçiciler + Düzeltilmiş Yükleme)
+// app/modal.tsx (Çoklu Fotoğraf Sürümü)
 
 import { ilceler, iller } from '@/constants/locationData';
 import { useAuth } from '@/context/AuthContext';
 import { PetsContext } from '@/context/PetsContext';
+import { supabase } from '@/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useContext, useState } from 'react';
-// 1. DÜZELTME: 'atob' (decode) veya 'FileSystem' importları kaldırıldı
-import { supabase } from '@/supabase'; // supabase importu eksikti, eklendi
-import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +16,7 @@ import {
   Keyboard,
   Modal,
   Platform,
-  ScrollView,
+  ScrollView, // ScrollView eklendi
   StatusBar,
   StyleSheet,
   Text,
@@ -32,7 +31,7 @@ const breedData = {
   kopek: ['Alman Kurdu', 'Golden Retriever', 'Terrier', 'Pug', 'Fransız Bulldog', 'Labrador', 'Diğer...']
 };
 
-// 🔹 ModalSelect bileşeni (Sizin kodunuz - Harika!)
+// 🔹 ModalSelect bileşeni (Arama özellikli)
 const ModalSelect = ({ visible, title, options, selectedValue, onSelect, onClose }: any) => {
   const [search, setSearch] = useState('');
   const filtered = options.filter((item: string) =>
@@ -67,13 +66,14 @@ const ModalSelect = ({ visible, title, options, selectedValue, onSelect, onClose
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[styles.modalOption, item === selectedValue && styles.modalOptionSelected]}
-                  onPress={() => { onSelect(item); onClose(); }}
+                  onPress={() => { onSelect(item); setSearch(''); onClose(); }}
                 >
                   <Text style={[styles.modalOptionText, item === selectedValue && styles.modalOptionTextSelected]}>
                     {item}
                   </Text>
                 </TouchableOpacity>
               )}
+              keyboardShouldPersistTaps="handled"
             />
           </View>
         </View>
@@ -81,6 +81,8 @@ const ModalSelect = ({ visible, title, options, selectedValue, onSelect, onClose
     </Modal>
   );
 };
+// ... (ModalSelect Bitişi)
+
 
 export default function ModalScreen() {
   const router = useRouter();
@@ -94,9 +96,12 @@ export default function ModalScreen() {
   const [age, setAge] = useState('');
   const [purpose, setPurpose] = useState<'sahiplenme'>('sahiplenme');
   const [description, setDescription] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [city, setCity] = useState(''); // İl
-  const [district, setDistrict] = useState(''); // İlçe
+  
+  // --- YENİLİK (1/6): Tekil 'imageUri' state'ini 'imageUris' (dizi) olarak değiştirdik ---
+  const [imageUris, setImageUris] = useState<string[]>([]);
+  
+  const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
 
@@ -107,7 +112,7 @@ export default function ModalScreen() {
 
   const availableDistricts = city ? ilceler[city] || [] : [];
 
-  // 2. DÜZELTME: Fotoğraf seç (İçi dolduruldu)
+  // --- YENİLİK (2/6): Fotoğraf seçme fonksiyonu güncellendi ---
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -116,16 +121,29 @@ export default function ModalScreen() {
     }
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
+      // allowsEditing: true, // Çoklu seçimde 'allowsEditing' kullanılamaz
+      // aspect: [4, 3], // Çoklu seçimde bu da kullanılamaz
+      quality: 0.7,
+      allowsMultipleSelection: true, // Birden fazla seçimi etkinleştir
     });
+    
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      // 'result.assets' artık bir dizi
+      const newUris = result.assets.map(asset => asset.uri);
+      // Yeni seçilenleri mevcut listeye ekle
+      setImageUris(prevUris => [...prevUris, ...newUris]);
     }
   };
 
-  // 3. DÜZELTME: Supabase'e 'FormData' ile yükleme (İçi dolduruldu)
+  // --- YENİLİK (3/6): Seçilen bir fotoğrafı listeden kaldırma fonksiyonu ---
+  const handleRemoveImage = (indexToRemove: number) => {
+    setImageUris(prevUris => 
+      prevUris.filter((_, index) => index !== indexToRemove)
+    );
+  };
+
+
+  // uploadImageAsync fonksiyonu aynı (tek bir URI yükler, bu doğru)
   const uploadImageAsync = async (uri: string, userId: string): Promise<string> => {
     try {
       const fileExt = uri.split('.').pop() || 'jpg';
@@ -156,15 +174,27 @@ export default function ModalScreen() {
     }
   };
 
-  // 4. DÜZELTME: Form gönder (İçi dolduruldu)
+  // --- GÜNCELLEME (4/6): Form gönderme fonksiyonu güncellendi ---
   const handleSubmit = async () => {
     if (!user) return Alert.alert('Hata', 'İlan eklemek için giriş yapmalısınız.');
-    if (!name || !animalType || !breed || !age || !city || !district || !description || !imageUri)
-      return Alert.alert('Hata', 'Tüm * alanları doldurun.');
+    // Validasyonu 'imageUris.length' olarak güncelle
+    if (!name || !animalType || !breed || !age || !city || !district || !description || imageUris.length === 0)
+      return Alert.alert('Hata', 'Tüm * alanları doldurun ve en az bir fotoğraf ekleyin.');
 
     try {
-      setLoadingMessage('Fotoğraf yükleniyor...');
-      const imageUrl = await uploadImageAsync(imageUri, user.id);
+      // Yüklenecek fotoğrafların URL'lerini tutacak dizi
+      const uploadedImageUrls: string[] = [];
+
+      setLoadingMessage(`Fotoğraflar yükleniyor (0 / ${imageUris.length})`);
+
+      // Tüm fotoğrafları tek tek yükle
+      for (let i = 0; i < imageUris.length; i++) {
+        const uri = imageUris[i];
+        setLoadingMessage(`Fotoğraf yükleniyor (${i + 1} / ${imageUris.length})...`);
+        const imageUrl = await uploadImageAsync(uri, user.id);
+        uploadedImageUrls.push(imageUrl);
+      }
+      
       setLoadingMessage('İlan kaydediliyor...');
       
       await addPet({
@@ -174,8 +204,12 @@ export default function ModalScreen() {
         age: parseInt(age) || 0,
         type: purpose,
         description,
-        image_url: imageUrl,
-        location: `${district}, ${city}`, // (İlçe, İl) formatında kaydet
+        // YENİ: Kapak fotoğrafı (ilk fotoğraf)
+        image_url: uploadedImageUrls[0],
+        // YENİ: Tüm fotoğrafların galerisi (DB'de 'image_gallery text[]' sütunu GEREKLİ)
+        image_gallery: JSON.stringify(uploadedImageUrls),
+
+        location: `${district}, ${city}`,
       } as any);
       
       setLoadingMessage(null);
@@ -190,6 +224,7 @@ export default function ModalScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        
         <Text style={styles.label}>Evcil Hayvanın Adı *</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} />
 
@@ -243,7 +278,6 @@ export default function ModalScreen() {
           onChangeText={setAge}
         />
 
-        {/* 🔹 Konum Alanı - Butonlar Yan Yana */}
         <Text style={styles.label}>Konum *</Text>
         <View style={styles.manualLocationContainer}>
           <TouchableOpacity style={styles.pickerButton} onPress={() => setShowCityModal(true)}>
@@ -275,19 +309,30 @@ export default function ModalScreen() {
           placeholder="Evcil hayvanınızı tanımlayın..."
         />
 
-        <Text style={styles.label}>Fotoğraf *</Text>
-        <TouchableOpacity style={styles.imageUploadArea} onPress={pickImage}>
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-           ) : (
-            <>
-              <Ionicons name="cloud-upload-outline" size={30} color="#888" />
-              <Text style={styles.imageUploadText}>Fotoğraf Seçmek İçin Dokunun</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* --- YENİLİK (5/6): Fotoğraf yükleme alanı güncellendi --- */}
+        <Text style={styles.label}>Fotoğraflar *</Text>
+        <ScrollView horizontal style={styles.imageScrollContainer} showsHorizontalScrollIndicator={false}>
+          {/* Seçilen fotoğrafları map ile dön ve göster */}
+          {imageUris.map((uri, index) => (
+            <View key={index} style={styles.imageThumbnailContainer}>
+              <Image source={{ uri: uri }} style={styles.imageThumbnail} />
+              <TouchableOpacity 
+                style={styles.removeButton} 
+                onPress={() => handleRemoveImage(index)}
+              >
+                <Ionicons name="close" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          
+          {/* Yeni fotoğraf ekleme butonu */}
+          <TouchableOpacity style={styles.addPhotoBoutton} onPress={pickImage}>
+            <Ionicons name="camera" size={24} color="#555" />
+            <Text style={styles.addPhotoText}>Ekle</Text>
+          </TouchableOpacity>
+        </ScrollView>
+        {/* --- YENİLİK BİTTİ --- */}
 
-        {/* 5. DÜZELTME: Eksik İptal/Kaydet butonları geri eklendi */}
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()} disabled={isLoading}>
             <Text style={styles.cancelButtonText}>İptal</Text>
@@ -371,9 +416,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  imageUploadArea: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 30, marginBottom: 20, height: 200 },
-  imageUploadText: { fontSize: 15, color: '#555', marginTop: 8 },
-  imagePreview: { width: '100%', height: '100%', borderRadius: 8, resizeMode: 'cover' },
   buttonRow:{ flexDirection:'row', justifyContent:'space-between', marginTop:20 },
   cancelButton:{ backgroundColor:'#e0e0e0', padding:15, borderRadius:8, alignItems:'center', width:'48%' },
   cancelButtonText:{ color:'#555', fontWeight:'bold', fontSize:16 },
@@ -395,11 +437,58 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  modalTitle: { fontSize: 22, fontWeight: 'bold' },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   modalOption: { paddingVertical: 18, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   modalOptionSelected: { backgroundColor: '#F97316' },
-  modalOptionText: { fontSize: 18 },
+  modalOptionText: { fontSize: 18, color: '#333' },
   modalOptionTextSelected: { color: '#fff' },
   searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, marginHorizontal: 15, marginTop: 15, height: 44, borderWidth: 1, borderColor: '#ddd' },
-  searchInput: { flex: 1, marginLeft: 8, fontSize: 16 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 16, color: '#333' },
+
+  // --- YENİLİK (6/6): Çoklu fotoğraf galerisi için stiller ---
+  imageScrollContainer: {
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  imageThumbnailContainer: {
+    width: 100,
+    height: 100,
+    marginRight: 10,
+    borderRadius: 8,
+  },
+  imageThumbnail: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#eee',
+  },
+  removeButton: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#F97316', // Turuncu
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFBF5', // Arkaplan rengi
+  },
+  addPhotoBoutton: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fafafa',
+  },
+  addPhotoText: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#555',
+  },
 });

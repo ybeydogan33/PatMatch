@@ -1,4 +1,4 @@
-// app/profile/edit.tsx (TAM VE DÜZELTİLMİŞ SUPABASE SÜRÜMÜ)
+// app/profile/edit.tsx (ModalSelect Bileşeni İçeride)
 
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/supabase';
@@ -11,7 +11,11 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
+  Keyboard,
+  // --- GÜNCELLEME (1/5): Modal için importlar eklendi ---
+  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -19,8 +23,65 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View
 } from 'react-native';
+
+// --- GÜNCELLEME (2/5): İl listesi import edildi ---
+import { iller } from '@/constants/locationData';
+
+// --- GÜNCELLEME (3/5): ModalSelect bileşeni 'app/modal.tsx' dosyasından kopyalandı ---
+const ModalSelect = ({ visible, title, options, selectedValue, onSelect, onClose }: any) => {
+  const [search, setSearch] = useState('');
+  const filtered = options.filter((item: string) =>
+    item.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{title}</Text>
+              <TouchableOpacity onPress={onClose}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={18} color="#888" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Ara..."
+                value={search}
+                onChangeText={setSearch}
+              />
+            </View>
+
+            <FlatList
+              data={filtered}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.modalOption, item === selectedValue && styles.modalOptionSelected]}
+                  onPress={() => { onSelect(item); setSearch(''); onClose(); }} // Arama metnini temizle
+                >
+                  <Text style={[styles.modalOptionText, item === selectedValue && styles.modalOptionTextSelected]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              keyboardShouldPersistTaps="handled" // Arama yaparken listeye tıklanabilsin
+            />
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
+// --- GÜNCELLEME (3/5) BİTTİ ---
+
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -28,16 +89,17 @@ export default function EditProfileScreen() {
 
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
   const [imageUri, setImageUri] = useState<string | null>(profile?.photo_url || null);
-  
-  // --- YENİ EKLENDİ (1/3) ---
-  // Konum (İl) için state
   const [city, setCity] = useState(profile?.city || '');
-  // --- YENİ EKLENDİ BİTTİ ---
-
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const isLoading = loadingMessage !== null;
 
-  // Fotoğraf seçme (TAM HALİ)
+  // --- GÜNCELLEME (4/5): Modal state'i eklendi ---
+  const [showCityModal, setShowCityModal] = useState(false);
+
+  // ... (pickImage, uploadImageAsync, handleSave fonksiyonları aynı,
+  // 'handleSave' zaten 'city' state'ini kaydediyordu, o yüzden çalışacak)
+  
+    // Fotoğraf seçme (TAM HALİ)
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -120,11 +182,7 @@ export default function EditProfileScreen() {
       const updates = {
         display_name: displayName.trim(),
         photo_url: newPhotoURL,
-        
-        // --- YENİ EKLENDİ (3/3) ---
-        // 'city' alanını da güncellemeye dahil et
-        city: city.trim(),
-        // --- YENİ EKLENDİ BİTTİ ---
+        city: city ? city.trim() : '', // 'city' state'ini kullan
       };
 
       const { error } = await supabase
@@ -138,7 +196,7 @@ export default function EditProfileScreen() {
       }
       
       setLoadingMessage(null);
-      Alert.alert("Başarılı", "Profiliniz güncellendi.");
+      Alert.alert("Başarı", "Profiliniz güncellendi.");
       router.back(); 
 
     } catch (error: any) {
@@ -148,12 +206,12 @@ export default function EditProfileScreen() {
     }
   };
 
-
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
-        <TouchableOpacity style={styles.avatarContainer} onPress={pickImage} disabled={isLoading}>
+        {/* ... (Avatar, Görünen Ad, E-posta alanları aynı) ... */}
+         <TouchableOpacity style={styles.avatarContainer} onPress={pickImage} disabled={isLoading}>
           {imageUri ? (
             <Image source={{ uri: imageUri }} style={styles.avatarImage} />
           ) : (
@@ -176,17 +234,18 @@ export default function EditProfileScreen() {
           disabled={isLoading}
         />
 
-        {/* --- YENİ EKLENDİ (2/3) --- */}
+        {/* --- GÜNCELLEME (5/5): TextInput'u Modal Butonu ile değiştir --- */}
         <Text style={styles.label}>Konum (İl)</Text>
-        <TextInput
-          style={styles.input}
-          value={city}
-          onChangeText={setCity}
-          placeholder="Örn: Muş"
-          autoCapitalize="words" // Kelimelerin ilk harfini büyük yapar
+        <TouchableOpacity 
+          style={styles.pickerButton} // Stiller aşağıya eklendi
+          onPress={() => setShowCityModal(true)} 
           disabled={isLoading}
-        />
-        {/* --- YENİ EKLENDİ BİTTİ --- */}
+        >
+          <Text style={[styles.pickerButtonText, !city && styles.pickerPlaceholder]}>
+            {city || 'İl Seçin...'}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color="#888" />
+        </TouchableOpacity>
 
         <Text style={styles.label}>E-posta (Değiştirilemez)</Text>
         <TextInput
@@ -194,7 +253,8 @@ export default function EditProfileScreen() {
           value={user?.email || ''}
           editable={false} 
         />
-
+        
+        {/* ... (Kaydet Butonu aynı) ... */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
             style={[styles.saveButton, isLoading && styles.saveButtonDisabled]} 
@@ -214,12 +274,25 @@ export default function EditProfileScreen() {
 
         <StatusBar barStyle="dark-content" />
       </ScrollView>
+
+      {/* --- GÜNCELLEME (5/5): Modal'ı JSX sonuna ekle --- */}
+      <ModalSelect
+        visible={showCityModal}
+        title="İl Seçin"
+        options={iller}
+        selectedValue={city}
+        onSelect={(value: string) => {
+          setCity(value);
+        }}
+        onClose={() => setShowCityModal(false)}
+      />
     </View>
   );
 }
 
-// Stiller (TAM HALİ)
+// Stiller
 const styles = StyleSheet.create({
+  // ... (container, scrollContent, avatar stilleri, input, vb. aynı) ...
   container: {
     flex: 1,
     backgroundColor: '#FFFBF5',
@@ -314,5 +387,90 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     marginLeft: 10,
+  },
+
+  // --- GÜNCELLEME: modal.tsx'ten kopyalanan tüm stiller ---
+  pickerButton: {
+    backgroundColor: '#fff',
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    height: 50, // 'input' ile aynı
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20, // 'input' ile aynı
+    width: '100%',
+  },
+  pickerButtonText: { 
+    fontSize: 16, 
+    color: '#333' 
+  },
+  pickerPlaceholder: { 
+    color: '#888' 
+  },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.3)', 
+    justifyContent: 'center', 
+    padding: 20 
+  },
+  modalContainer: { 
+    backgroundColor: '#FFFBF5', 
+    borderRadius: 12,
+    maxHeight: '80%',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    padding: 20, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#eee' 
+  },
+  modalTitle: { 
+    fontSize: 22, 
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalOption: { 
+    paddingVertical: 18, 
+    paddingHorizontal: 20, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f5f5f5' 
+  },
+  modalOptionSelected: { 
+    backgroundColor: '#F97316' 
+  },
+  modalOptionText: { 
+    fontSize: 18,
+    color: '#333',
+  },
+  modalOptionTextSelected: { 
+    color: '#fff' 
+  },
+  searchBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#fff', 
+    borderRadius: 8, 
+    paddingHorizontal: 10, 
+    marginHorizontal: 15, 
+    marginTop: 15, 
+    height: 44, 
+    borderWidth: 1, 
+    borderColor: '#ddd' 
+  },
+  searchInput: { 
+    flex: 1, 
+    marginLeft: 8, 
+    fontSize: 16,
+    color: '#333',
   },
 });
